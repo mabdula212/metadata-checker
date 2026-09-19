@@ -1,0 +1,6 @@
+{
+  "name": "Metadata Checker",
+  "description": "Upload a PDF bank statement to inspect metadata and analyze transactions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
