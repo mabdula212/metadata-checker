@@ -1,0 +1,243 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum DocumentStatus {
+  UPLOADED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum DocumentType {
+  UNKNOWN
+  BANK_STATEMENT
+  OTHER_PDF
+}
+
+enum JobType {
+  METADATA_EXTRACTION
+  BANK_DETECTION
+  TRANSACTION_EXTRACTION
+  VALIDATION
+  EXCEL_EXPORT
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ExportFormat {
+  XLSX
+  CSV
+}
+
+// ==========================================
+// MODELS
+// ==========================================
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  name         String?
+  role         Role          @default(USER)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  documents    Document[]
+  bankAccounts BankAccount[]
+  exports      Export[]
+  auditLogs    AuditLog[]
+
+  @@map("users")
+}
+
+model Document {
+  id               String          @id @default(uuid())
+  userId           String
+  originalFileName String
+  storedFileName   String
+  mimeType         String
+  fileSize         Int
+  storageKey       String
+  status           DocumentStatus  @default(UPLOADED)
+  documentType     DocumentType    @default(UNKNOWN)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metadata         DocumentMetadata?
+  statement        Statement?
+  processingJobs   ProcessingJob[]
+  exports          Export[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("documents")
+}
+
+model DocumentMetadata {
+  id               String    @id @default(uuid())
+  documentId       String    @unique
+  title            String?
+  author           String?
+  subject          String?
+  creator          String?
+  producer         String?
+  creationDate     DateTime?
+  modificationDate DateTime?
+  pageCount        Int?
+  fileHash         String?
+  rawMetadataJson  Json?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  document         Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("document_metadata")
+}
+
+model BankAccount {
+  id                  String      @id @default(uuid())
+  userId              String
+  bankName            String
+  accountNumberMasked String
+  accountHolderName   String
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  statements          Statement[]
+
+  @@index([userId])
+  @@map("bank_accounts")
+}
+
+model Statement {
+  id                   String        @id @default(uuid())
+  documentId           String        @unique
+  bankAccountId        String?
+  bankName             String
+  accountNumberMasked  String?
+  accountHolderName    String?
+  statementPeriodStart DateTime?
+  statementPeriodEnd   DateTime?
+  openingBalance       Decimal?      @db.Decimal(18, 2)
+  closingBalance       Decimal?      @db.Decimal(18, 2)
+  totalCredit          Decimal?      @db.Decimal(18, 2)
+  totalDebit           Decimal?      @db.Decimal(18, 2)
+  transactionCount     Int           @default(0)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  document             Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  bankAccount          BankAccount?  @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  transactions         Transaction[]
+
+  @@index([bankAccountId])
+  @@map("statements")
+}
+
+model Transaction {
+  id              String    @id @default(uuid())
+  statementId     String
+  transactionDate DateTime
+  description     String
+  referenceNumber String?
+  debit           Decimal?  @db.Decimal(18, 2)
+  credit          Decimal?  @db.Decimal(18, 2)
+  balance         Decimal   @db.Decimal(18, 2)
+  transactionType String?
+  category        String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  statement       Statement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+
+  @@index([statementId])
+  @@index([transactionDate])
+  @@map("transactions")
+}
+
+model TransactionCategory {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("transaction_categories")
+}
+
+model ProcessingJob {
+  id           String    @id @default(uuid())
+  documentId   String
+  jobType      JobType
+  status       JobStatus @default(QUEUED)
+  errorMessage String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  document     Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([status])
+  @@map("processing_jobs")
+}
+
+model Export {
+  id         String       @id @default(uuid())
+  documentId String
+  userId     String
+  format     ExportFormat
+  fileName   String
+  storageKey String
+  createdAt  DateTime     @default(now())
+
+  document   Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([documentId])
+  @@map("exports")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([entityType])
+  @@index([entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
