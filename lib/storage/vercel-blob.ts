@@ -14,7 +14,7 @@ export class VercelBlobStorageProvider implements StorageProvider {
   private readonly token: string;
 
   constructor(token?: string) {
-    this.token = token || process.env.BLOB_READ_WRITE_TOKEN || "";
+    this.token = token !== undefined ? token : (process.env.BLOB_READ_WRITE_TOKEN || "");
   }
 
   private ensureConfigured(): void {

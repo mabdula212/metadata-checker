@@ -24,3 +24,8 @@ coverage/
 prisma/*.db
 prisma/*.db-journal
 
+# Local storage uploads
+/storage/
+
+
+
