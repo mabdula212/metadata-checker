@@ -9,6 +9,7 @@ import bankDetectionHandler from './api/bank-detection';
 import transactionExtractionHandler from './api/transaction-extraction';
 import excelExportHandler from './api/excel-export';
 import loginHandler from './api/auth/login';
+import registerHandler from './api/auth/register';
 import logoutHandler from './api/auth/logout';
 import sessionHandler from './api/auth/session';
 import adminUsersHandler from './api/admin/users';
@@ -29,6 +30,9 @@ function apiPlugin(): Plugin {
     const url = req.url?.split('?')[0];
     if (url === '/api/auth/login') {
       return loginHandler(req, res);
+    }
+    if (url === '/api/auth/register') {
+      return registerHandler(req, res);
     }
     if (url === '/api/auth/logout') {
       return logoutHandler(req, res);

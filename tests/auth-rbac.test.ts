@@ -224,6 +224,35 @@ describe("Authentication & Security Module", () => {
     });
   });
 
+  describe("User Registration Handler", () => {
+    it("should reject registration with invalid email or weak password", async () => {
+      const registerHandler = (await import("../api/auth/register")).default;
+
+      // Test weak password
+      let statusCode = 0;
+      let output = "";
+      const req: any = {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        async *[Symbol.asyncIterator]() {
+          yield Buffer.from(JSON.stringify({ name: "Test", email: "test@example.com", password: "short" }));
+        },
+      };
+      const res: any = {
+        setHeader() {},
+        end(data: string) { output = data; },
+        set statusCode(code: number) { statusCode = code; },
+        get statusCode() { return statusCode; },
+      };
+
+      await registerHandler(req, res);
+      assert.strictEqual(statusCode, 400);
+      const parsed = JSON.parse(output);
+      assert.strictEqual(parsed.success, false);
+      assert.match(parsed.error, /8 characters/i);
+    });
+  });
+
   describe("Production Seed Gating", () => {
     it("should strictly refuse to seed development users in production environment", async () => {
       const { seedInitialUsers } = await import("../lib/auth/init");

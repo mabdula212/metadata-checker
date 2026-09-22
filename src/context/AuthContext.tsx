@@ -12,6 +12,7 @@ interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
+  register: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
 }
@@ -64,6 +65,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const register = async (name: string, email: string, password: string) => {
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.user) {
+        setUser(data.user);
+        return { success: true };
+      }
+      return { success: false, error: data.error || "Failed to create account." };
+    } catch {
+      return { success: false, error: "Network error connecting to registration service." };
+    }
+  };
+
   const logout = async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
@@ -73,7 +92,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refreshSession }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshSession }}>
       {children}
     </AuthContext.Provider>
   );
