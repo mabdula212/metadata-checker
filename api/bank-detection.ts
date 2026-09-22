@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import { runBankDetectionOnDocument } from "../lib/db/documents";
+import { requireDocumentOwner, logAuditEvent } from "../lib/auth";
 
 /**
  * Server-side API handler for Bank Statement Detection.
@@ -63,6 +64,10 @@ export default async function bankDetectionHandler(
       return;
     }
 
+    // Enforce authentication & document ownership (IDOR defense)
+    const ownerCheck = await requireDocumentOwner(req, res, documentId);
+    if (!ownerCheck) return;
+
     // Optional direct buffer if client provided fileBase64 as fallback
     let directBuffer: Buffer | undefined;
     if (
@@ -79,6 +84,18 @@ export default async function bankDetectionHandler(
     // Execute bank detection workflow
     const result = await runBankDetectionOnDocument(documentId, directBuffer);
 
+    // Record audit event
+    await logAuditEvent({
+      userId: ownerCheck.user.id,
+      action: "BANK_DETECTION_RUN",
+      entityType: "DOCUMENT",
+      entityId: documentId,
+      metadata: {
+        bankName: result.statement?.bankName,
+        confidence: result.detection?.confidence,
+      },
+    });
+
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
     res.end(
@@ -91,7 +108,6 @@ export default async function bankDetectionHandler(
     const rawError =
       error instanceof Error ? error.message : "Bank detection processing error";
 
-    // Sanitize any system internals or database URLs
     const sanitizedError = rawError
       .replace(/postgresql:\/\/[^@]+@/gi, "postgresql://***:***@")
       .replace(/\/[a-zA-Z0-9_\-./]+\//g, "");

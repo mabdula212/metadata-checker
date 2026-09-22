@@ -17,6 +17,10 @@ import {
   Database,
   Landmark,
   RefreshCw,
+  LogOut,
+  Users,
+  LayoutDashboard,
+  ShieldCheck,
 } from "lucide-react";
 import type {
   DocumentRecord,
@@ -29,8 +33,12 @@ import type {
 import { MetadataResultCard } from "./components/MetadataResultCard";
 import { BankAnalysisCard } from "./components/BankAnalysisCard";
 import { TransactionExtractionCard } from "./components/TransactionExtractionCard";
+import { ExcelExportCard } from "./components/ExcelExportCard";
 import { RecentFilesTable } from "./components/RecentFilesTable";
 import type { TransactionExtractionResultUi } from "./types/transaction";
+import { AuthProvider, useAuth, type UserProfile } from "./context/AuthContext";
+import { LoginPage } from "./components/auth/LoginPage";
+import { AdminUserManagement } from "./components/admin/AdminUserManagement";
 
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
 
@@ -109,7 +117,14 @@ const STAGE_DETAILS: Record<ProcessingStage, ProcessingStateInfo> = {
   },
 };
 
-export default function App() {
+interface MainWorkspaceProps {
+  user: UserProfile;
+  logout: () => Promise<void>;
+  activeTab: "workspace" | "users";
+  setActiveTab: (tab: "workspace" | "users") => void;
+}
+
+function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceProps) {
   const [selectedRawFile, setSelectedRawFile] = useState<File | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -544,37 +559,105 @@ export default function App() {
       {/* Header */}
       <header className="bg-white border-b border-neutral-200 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-neutral-900 flex items-center justify-center text-white shadow-xs">
-              <FileText className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-base tracking-tight text-neutral-950">
-                  Metadata Checker
-                </span>
-                <span className="text-[11px] font-medium bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded border border-neutral-200">
-                  Engine v1.0
-                </span>
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-neutral-900 flex items-center justify-center text-white shadow-xs">
+                <FileText className="w-5 h-5" />
               </div>
-              <p className="text-[11px] text-neutral-500 hidden sm:block">
-                PDF Metadata &amp; Bank Statement Analyzer
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-base tracking-tight text-neutral-950">
+                    Metadata Checker
+                  </span>
+                  <span className="text-[11px] font-medium bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded border border-neutral-200">
+                    Engine v1.0
+                  </span>
+                </div>
+                <p className="text-[11px] text-neutral-500 hidden sm:block">
+                  PDF Metadata &amp; Bank Statement Analyzer
+                </p>
+              </div>
             </div>
+
+            {/* Navigation tabs for Admin */}
+            {user.role === "ADMIN" && (
+              <nav className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("workspace")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                    activeTab === "workspace"
+                      ? "bg-white text-slate-900 shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <LayoutDashboard className="w-3.5 h-3.5" />
+                  <span>Workspace</span>
+                </button>
+                <button
+                  id="admin-nav-users-tab"
+                  type="button"
+                  onClick={() => setActiveTab("users")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                    activeTab === "users"
+                      ? "bg-white text-slate-900 shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Users &amp; RBAC</span>
+                </button>
+              </nav>
+            )}
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-neutral-600 font-medium">
-            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">
+          <div className="flex items-center gap-3">
+            <span className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs">
               <Database className="w-3.5 h-3.5 text-emerald-600" />
               <span>Neon PostgreSQL Connected</span>
             </span>
+
+            {/* User profile capsule & Sign Out */}
+            <div className="flex items-center gap-2.5 pl-2 border-l border-slate-200">
+              <div className="text-right hidden sm:block">
+                <div className="text-xs font-semibold text-slate-900 leading-tight">
+                  {user.name || user.email.split("@")[0]}
+                </div>
+                <div className="flex items-center justify-end gap-1 mt-0.5">
+                  <span
+                    className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded ${
+                      user.role === "ADMIN"
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-slate-100 text-slate-700"
+                    }`}
+                  >
+                    {user.role}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                id="sign-out-button"
+                type="button"
+                onClick={() => logout()}
+                title="Sign Out"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-red-700 hover:bg-red-50 rounded-lg border border-slate-200 hover:border-red-200 transition-colors cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Sign Out</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-8">
-        {/* Title & Short Explanation */}
+        {activeTab === "users" && user.role === "ADMIN" ? (
+          <AdminUserManagement />
+        ) : (
+          <>
+            {/* Title & Short Explanation */}
         <section className="text-center max-w-2xl mx-auto space-y-2">
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-neutral-950">
             PDF Metadata &amp; Bank Statement Analyzer
@@ -698,6 +781,16 @@ export default function App() {
                   triggerTransactionExtraction(activeResult.document.id)
                 }
                 documentId={activeResult.document.id}
+                isScannedOrImageOnly={bankDetectionResult?.isScannedOrImageOnly}
+              />
+            )}
+
+            {/* Bank Statement Excel Export Engine Section */}
+            {activeResult.document.documentType !== "OTHER_PDF" && (
+              <ExcelExportCard
+                documentId={activeResult.document.id}
+                extraction={transactionExtractionResult}
+                isExtractingTransactions={isExtractingTransactions}
                 isScannedOrImageOnly={bankDetectionResult?.isScannedOrImageOnly}
               />
             )}
@@ -945,6 +1038,8 @@ export default function App() {
             }}
           />
         </section>
+          </>
+        )}
       </main>
 
       {/* Footer */}
@@ -965,6 +1060,45 @@ export default function App() {
         </div>
       </footer>
     </div>
+  );
+}
+
+function AppContent() {
+  const { user, loading, logout } = useAuth();
+  const [activeTab, setActiveTab] = useState<"workspace" | "users">("workspace");
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-slate-800" />
+          <p className="text-xs font-medium text-slate-500 tracking-wide">
+            Checking authenticated session...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginPage />;
+  }
+
+  return (
+    <MainWorkspace
+      user={user}
+      logout={logout}
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+    />
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

@@ -3,6 +3,7 @@ import {
   runTransactionExtractionOnDocument,
   getTransactionsForDocument,
 } from "../lib/db/documents";
+import { requireDocumentOwner, logAuditEvent } from "../lib/auth";
 
 /**
  * Server-side API handler for Bank Statement Transaction Extraction.
@@ -10,6 +11,7 @@ import {
  * Body: { "documentId": "uuid-of-document" }
  *
  * Also supports: GET /api/transaction-extraction?documentId=... to retrieve existing transactions.
+ * Enforces authentication and document ownership (IDOR defense).
  */
 export default async function transactionExtractionHandler(
   req: IncomingMessage,
@@ -27,6 +29,10 @@ export default async function transactionExtractionHandler(
         res.end(JSON.stringify({ success: false, error: "Missing documentId parameter." }));
         return;
       }
+
+      // Enforce ownership
+      const ownerCheck = await requireDocumentOwner(req, res, documentId);
+      if (!ownerCheck) return;
 
       const statement = await getTransactionsForDocument(documentId);
       res.statusCode = 200;
@@ -100,6 +106,10 @@ export default async function transactionExtractionHandler(
       return;
     }
 
+    // Enforce authentication & document ownership (IDOR defense)
+    const ownerCheck = await requireDocumentOwner(req, res, documentId);
+    if (!ownerCheck) return;
+
     // Optional direct buffer if client provided fileBase64
     let directBuffer: Buffer | undefined;
     if (
@@ -115,6 +125,19 @@ export default async function transactionExtractionHandler(
 
     // Execute transaction extraction
     const result = await runTransactionExtractionOnDocument(documentId, directBuffer);
+
+    // Record audit log
+    await logAuditEvent({
+      userId: ownerCheck.user.id,
+      action: "TRANSACTION_EXTRACTION_RUN",
+      entityType: "DOCUMENT",
+      entityId: documentId,
+      metadata: {
+        statementId: result.statementId,
+        status: result.status,
+        transactionCount: result.transactions?.length ?? 0,
+      },
+    });
 
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
@@ -136,7 +159,6 @@ export default async function transactionExtractionHandler(
     const rawError =
       error instanceof Error ? error.message : "Transaction extraction processing error";
 
-    // Sanitize any system internals or database URLs
     const sanitizedError = rawError
       .replace(/postgresql:\/\/[^@]+@/gi, "postgresql://***:***@")
       .replace(/\/[a-zA-Z0-9_\-./]+\//g, "");

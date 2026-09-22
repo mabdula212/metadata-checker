@@ -10,8 +10,6 @@ import {
   type ExtractionStatus,
 } from "../transaction-extraction";
 import crypto from "crypto";
-import fs from "fs";
-import path from "path";
 import { Prisma, type DocumentType } from "@prisma/client";
 import {
   getStorageProvider,
@@ -98,6 +96,7 @@ export interface SaveDocumentOptions {
   fileSize: number;
   buffer: Buffer;
   extractedMetadata: ExtractedPdfMetadata;
+  userId?: string;
 }
 
 export interface SaveDocumentResult {
@@ -167,8 +166,12 @@ export async function processAndSaveDocument(
     };
   }
 
-  // 2. Ensure system user exists
-  const user = await getOrCreateSystemUser();
+  // 2. Resolve document owner (authenticated user or fallback to system user)
+  let ownerUserId = options.userId;
+  if (!ownerUserId) {
+    const defaultUser = await getOrCreateSystemUser();
+    ownerUserId = defaultUser.id;
+  }
 
   // 3. Generate unique document ID and canonical storage key
   const documentId = crypto.randomUUID();
@@ -188,7 +191,7 @@ export async function processAndSaveDocument(
   const document = await prisma.document.create({
     data: {
       id: documentId,
-      userId: user.id,
+      userId: ownerUserId,
       originalFileName,
       storedFileName,
       mimeType: "application/pdf",
@@ -717,6 +720,24 @@ export async function runTransactionExtractionOnDocument(
             : undefined,
         },
       });
+
+      // Update DocumentMetadata with reviewRows and extractionValidation for deterministic exports
+      if (document.metadata) {
+        const currentJson = (document.metadata.rawMetadataJson as Record<string, unknown>) || {};
+        await tx.documentMetadata.update({
+          where: { id: document.metadata.id },
+          data: {
+            rawMetadataJson: {
+              ...currentJson,
+              reviewRows: extractionResult.reviewRows,
+              extractionStatus: extractionResult.status,
+              extractionValidation: extractionResult.validation,
+              balanceReconciliationStatus: extractionResult.validation.balanceReconciliationStatus,
+              extractionWarnings: extractionResult.validation.warnings,
+            } as unknown as Prisma.InputJsonValue,
+          },
+        });
+      }
     });
 
     // 10. Update ProcessingJob to COMPLETED
@@ -791,9 +812,13 @@ export async function getTransactionsForDocument(documentId: string) {
 
 /**
  * Retrieves the list of recently analyzed documents and their metadata.
+ * If userId is provided, filters strictly for documents owned by that user.
  */
-export async function getRecentDocuments(limit = 10) {
+export async function getRecentDocuments(limit = 10, userId?: string) {
+  const whereClause = userId ? { userId } : {};
+
   return await prisma.document.findMany({
+    where: whereClause,
     take: limit,
     orderBy: { createdAt: "desc" },
     include: {

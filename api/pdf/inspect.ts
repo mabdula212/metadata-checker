@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "http";
 import Busboy from "busboy";
 import { inspectPdfMetadata, MAX_PDF_SIZE_BYTES } from "../../lib/pdf/pdf-inspector";
 import { processAndSaveDocument } from "../../lib/db/documents";
+import { requireAuth, logAuditEvent } from "../../lib/auth";
 
 interface ParsedUpload {
   fileName: string;
@@ -122,6 +123,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     return;
   }
 
+  // Require active authentication
+  const authUser = await requireAuth(req, res);
+  if (!authUser) return;
+
   try {
     // 1. Parse and extract uploaded file
     const { fileName, buffer } = await parseRequestPayload(req);
@@ -129,12 +134,26 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     // 2. Perform server-side metadata inspection and validation
     const extractedMetadata = await inspectPdfMetadata(buffer);
 
-    // 3. Process and persist document + metadata + processing job
+    // 3. Process and persist document + metadata + processing job under authenticated user
     const result = await processAndSaveDocument({
       originalFileName: fileName,
       fileSize: buffer.length,
       buffer,
       extractedMetadata,
+      userId: authUser.id,
+    });
+
+    // 4. Record audit event
+    await logAuditEvent({
+      userId: authUser.id,
+      action: "DOCUMENT_UPLOADED",
+      entityType: "DOCUMENT",
+      entityId: result.document.id,
+      metadata: {
+        fileName,
+        fileSize: buffer.length,
+        isDuplicate: result.isDuplicate,
+      },
     });
 
     res.statusCode = 200;

@@ -37,10 +37,10 @@ export async function checkDatabaseHealth(): Promise<DatabaseHealthResult> {
       err instanceof Error ? err.message : "Unknown database connection error";
 
     // Clean any sensitive connection info from error message
-    const sanitizedError = errorMessage.replace(
-      /postgresql:\/\/[^@]+@/gi,
-      "postgresql://***:***@"
-    );
+    const sanitizedError =
+      process.env.NODE_ENV === "production"
+        ? "Database connection unavailable. Operational details have been logged."
+        : errorMessage.replace(/postgresql:\/\/[^@]+@/gi, "postgresql://***:***@");
 
     return {
       connected: false,

@@ -147,6 +147,22 @@ export function TransactionExtractionCard({
         </div>
 
         <div className="flex items-center gap-2">
+          {extraction && extraction.transactions.length > 0 && (
+            <button
+              id="jump-to-excel-export-button"
+              onClick={() => {
+                const el = document.getElementById("excel-export-section");
+                el?.scrollIntoView({ behavior: "smooth" });
+                const exportBtn = document.getElementById("export-excel-button") as HTMLButtonElement | null;
+                if (exportBtn) exportBtn.click();
+              }}
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-stone-900 hover:bg-stone-800 text-white text-xs font-medium rounded-lg shadow-sm transition-colors cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+              Export Excel
+            </button>
+          )}
+
           <button
             id="extract-transactions-button"
             onClick={onExtractTransactions}
