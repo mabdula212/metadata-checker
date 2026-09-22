@@ -54,14 +54,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, rememberMe }),
       });
-      const data = await res.json();
+      const contentType = res.headers.get("content-type") || "";
+      let data: any = {};
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        return { success: false, error: `Server error (${res.status}): ${text.slice(0, 100) || "Invalid response format"}` };
+      }
+
       if (res.ok && data.success && data.user) {
         setUser(data.user);
         return { success: true };
       }
       return { success: false, error: data.error || "Login failed" };
-    } catch {
-      return { success: false, error: "Network error connecting to authentication service." };
+    } catch (err: any) {
+      console.error("[LOGIN_FETCH_ERROR]", err);
+      return { success: false, error: err?.message ? `Network error: ${err.message}` : "Network error connecting to authentication service." };
     }
   };
 
@@ -72,14 +81,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, password }),
       });
-      const data = await res.json();
+      const contentType = res.headers.get("content-type") || "";
+      let data: any = {};
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        return { success: false, error: `Server error (${res.status}): ${text.slice(0, 100) || "Invalid response format"}` };
+      }
+
       if (res.ok && data.success && data.user) {
         setUser(data.user);
         return { success: true };
       }
       return { success: false, error: data.error || "Failed to create account." };
-    } catch {
-      return { success: false, error: "Network error connecting to registration service." };
+    } catch (err: any) {
+      console.error("[REGISTER_FETCH_ERROR]", err);
+      return { success: false, error: err?.message ? `Network error: ${err.message}` : "Network error connecting to registration service." };
     }
   };
 
