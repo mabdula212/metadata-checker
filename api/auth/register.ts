@@ -28,21 +28,34 @@ export default async function registerHandler(
   }
 
   try {
-    // Read request body
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    }
-    const bodyText = Buffer.concat(chunks).toString("utf-8");
-
+    // Read request body (compatible with Vercel pre-parsed body and raw Node stream)
     let body: Record<string, unknown> = {};
-    if (bodyText.trim()) {
+    const reqAny = req as any;
+
+    if (reqAny.body && typeof reqAny.body === "object") {
+      body = reqAny.body;
+    } else if (typeof reqAny.body === "string" && reqAny.body.trim()) {
       try {
-        body = JSON.parse(bodyText);
+        body = JSON.parse(reqAny.body);
       } catch {
         res.statusCode = 400;
         res.end(JSON.stringify({ success: false, error: "Invalid JSON request body." }));
         return;
+      }
+    } else {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      const bodyText = Buffer.concat(chunks).toString("utf-8");
+      if (bodyText.trim()) {
+        try {
+          body = JSON.parse(bodyText);
+        } catch {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ success: false, error: "Invalid JSON request body." }));
+          return;
+        }
       }
     }
 
@@ -169,13 +182,24 @@ export default async function registerHandler(
         token: session.sessionToken,
       })
     );
-  } catch (err) {
+  } catch (err: any) {
     console.error("[REGISTER_ERROR]", err);
     res.statusCode = 500;
+    const errMsg = String(err?.message || err || "");
+    let userMsg = "An unexpected error occurred while creating your account. Please try again.";
+
+    if (errMsg.includes("DATABASE_URL") || errMsg.includes("Environment variable not found")) {
+      userMsg = "Database connection error: DATABASE_URL environment variable is missing on Vercel/server.";
+    } else if (errMsg.includes("connect ECONNREFUSED") || errMsg.includes("Can't reach database server")) {
+      userMsg = "Cannot reach database server. Please check your DATABASE_URL credentials.";
+    } else if (errMsg.includes("did not initialize yet")) {
+      userMsg = "Prisma Client is not initialized. Build generation required.";
+    }
+
     res.end(
       JSON.stringify({
         success: false,
-        error: "An unexpected error occurred while creating your account. Please try again.",
+        error: userMsg,
       })
     );
   }
