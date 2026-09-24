@@ -1,6 +1,11 @@
 import fs from "fs";
 import path from "path";
-import type { StorageProvider, UploadOptions, UploadResult } from "./types.js";
+import {
+  isProductionEnvironment,
+  type StorageProvider,
+  type UploadOptions,
+  type UploadResult,
+} from "./types.js";
 
 /**
  * LocalStorageProvider
@@ -9,7 +14,7 @@ import type { StorageProvider, UploadOptions, UploadResult } from "./types.js";
  * Local filesystem storage is NOT persistent across Vercel / serverless deployments
  * because serverless execution lambdas are stateless and ephemeral.
  *
- * For Vercel production deployments, use VercelBlobStorageProvider or S3.
+ * For Vercel production deployments, use VercelBlobStorageProvider.
  */
 export class LocalStorageProvider implements StorageProvider {
   public readonly name = "local";
@@ -17,6 +22,12 @@ export class LocalStorageProvider implements StorageProvider {
   private readonly memoryCache: Map<string, Buffer> = new Map();
 
   constructor(baseDir?: string) {
+    if (isProductionEnvironment()) {
+      throw new Error(
+        "Production storage is not configured. Local filesystem storage is not permitted in production."
+      );
+    }
+
     const rawPath =
       baseDir ||
       process.env.LOCAL_STORAGE_PATH ||

@@ -16,6 +16,7 @@ import {
   generateStorageKey,
   getDocumentPdf,
   isPdfBuffer,
+  assertStorageConfigured,
 } from "../storage/index.js";
 
 export { getDocumentPdf };
@@ -32,8 +33,12 @@ export function persistBuffer(documentId: string, storageKey: string, buffer: Bu
   documentBufferCache.set(documentId, buffer);
   documentBufferCache.set(storageKey, buffer);
 
-  const provider = getStorageProvider();
-  provider.upload(storageKey, buffer, { contentType: "application/pdf" }).catch(() => null);
+  try {
+    const provider = getStorageProvider();
+    provider.upload(storageKey, buffer, { contentType: "application/pdf" }).catch(() => null);
+  } catch {
+    // ignore in background cache update
+  }
 }
 
 /**
@@ -178,6 +183,7 @@ export async function processAndSaveDocument(
   const { storageKey, storedFileName } = generateStorageKey(documentId, originalFileName);
 
   // 4. Upload PDF to StorageProvider before database insertion
+  assertStorageConfigured();
   const provider = getStorageProvider();
   await provider.upload(storageKey, options.buffer, {
     contentType: "application/pdf",

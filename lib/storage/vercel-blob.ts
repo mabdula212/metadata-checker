@@ -20,7 +20,7 @@ export class VercelBlobStorageProvider implements StorageProvider {
   private ensureConfigured(): void {
     if (!this.token) {
       throw new Error(
-        "Vercel Blob storage is selected (STORAGE_PROVIDER=vercel-blob), but BLOB_READ_WRITE_TOKEN environment variable is not configured. Please set BLOB_READ_WRITE_TOKEN or switch STORAGE_PROVIDER to 'local'."
+        "Production storage is not configured. BLOB_READ_WRITE_TOKEN environment variable is not configured."
       );
     }
   }

@@ -178,8 +178,20 @@ export default async function excelExportHandler(
       error instanceof Error ? error.message : "Excel export processing error.";
 
     let statusCode = 500;
-    if (rawError.includes("Document not found")) {
+    let sanitizedError: string;
+
+    if (
+      rawError.includes("Production storage is not configured") ||
+      rawError.includes("BLOB_READ_WRITE_TOKEN")
+    ) {
+      statusCode = 503;
+      sanitizedError = "Production storage is not configured.";
+    } else if (rawError.includes("Document not found")) {
       statusCode = 404;
+      sanitizedError = rawError
+        .replace(/postgresql:\/\/[^@]+@/gi, "postgresql://***:***@")
+        .replace(/\/[a-zA-Z0-9_\-./]+\//g, "")
+        .slice(0, 255);
     } else if (
       rawError.includes("No transaction data is available") ||
       rawError.includes("Complete transaction extraction") ||
@@ -187,12 +199,18 @@ export default async function excelExportHandler(
       rawError.includes("Invalid document ID")
     ) {
       statusCode = 400;
+      sanitizedError = rawError
+        .replace(/postgresql:\/\/[^@]+@/gi, "postgresql://***:***@")
+        .replace(/\/[a-zA-Z0-9_\-./]+\//g, "")
+        .slice(0, 255);
+    } else {
+      sanitizedError = rawError
+        .replace(/postgresql:\/\/[^@]+@/gi, "postgresql://***:***@")
+        .replace(/\/var\/task\/[^\s]+/gi, "[server-path]")
+        .replace(/[\/\\][a-zA-Z0-9_\-./]+\/(storage|documents)[^\s]*/gi, "[storage-path]")
+        .replace(/\/[a-zA-Z0-9_\-./]+\//g, "")
+        .slice(0, 255);
     }
-
-    const sanitizedError = rawError
-      .replace(/postgresql:\/\/[^@]+@/gi, "postgresql://***:***@")
-      .replace(/\/[a-zA-Z0-9_\-./]+\//g, "")
-      .slice(0, 255);
 
     res.statusCode = statusCode;
     res.setHeader("Content-Type", "application/json");

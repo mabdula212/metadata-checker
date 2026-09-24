@@ -3,6 +3,7 @@ import Busboy from "busboy";
 import { inspectPdfMetadata, MAX_PDF_SIZE_BYTES } from "../../lib/pdf/pdf-inspector.js";
 import { processAndSaveDocument } from "../../lib/db/documents.js";
 import { requireAuth, logAuditEvent } from "../../lib/auth/index.js";
+import { assertStorageConfigured } from "../../lib/storage/index.js";
 
 interface ParsedUpload {
   fileName: string;
@@ -127,6 +128,23 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const authUser = await requireAuth(req, res);
   if (!authUser) return;
 
+  // Validate storage configuration before document processing
+  try {
+    assertStorageConfigured();
+  } catch (err: unknown) {
+    const rawMsg = err instanceof Error ? err.message : "Production storage is not configured.";
+    res.statusCode = 503;
+    res.end(
+      JSON.stringify({
+        success: false,
+        error: rawMsg.includes("Production storage is not configured")
+          ? "Production storage is not configured."
+          : rawMsg,
+      })
+    );
+    return;
+  }
+
   try {
     // 1. Parse and extract uploaded file
     const { fileName, buffer } = await parseRequestPayload(req);
@@ -173,10 +191,21 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     );
   } catch (err: unknown) {
     const rawMessage = err instanceof Error ? err.message : "An unexpected processing error occurred.";
-    // Clean sensitive database connection info or file system paths
-    const sanitizedMessage = rawMessage
-      .replace(/postgresql:\/\/[^@]+@/gi, "postgresql://***:***@")
-      .slice(0, 300);
+    let sanitizedMessage: string;
+
+    if (
+      rawMessage.includes("Production storage is not configured") ||
+      rawMessage.includes("BLOB_READ_WRITE_TOKEN") ||
+      (rawMessage.includes("storage") && rawMessage.includes("ENOENT"))
+    ) {
+      sanitizedMessage = "Production storage is not configured.";
+    } else {
+      sanitizedMessage = rawMessage
+        .replace(/postgresql:\/\/[^@]+@/gi, "postgresql://***:***@")
+        .replace(/\/var\/task\/[^\s]+/gi, "[server-path]")
+        .replace(/[\/\\][a-zA-Z0-9_\-./]+\/(storage|documents)[^\s]*/gi, "[storage-path]")
+        .slice(0, 300);
+    }
 
     res.statusCode = 400;
     res.end(

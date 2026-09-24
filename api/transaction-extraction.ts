@@ -159,9 +159,19 @@ export default async function transactionExtractionHandler(
     const rawError =
       error instanceof Error ? error.message : "Transaction extraction processing error";
 
-    const sanitizedError = rawError
-      .replace(/postgresql:\/\/[^@]+@/gi, "postgresql://***:***@")
-      .replace(/\/[a-zA-Z0-9_\-./]+\//g, "");
+    let sanitizedError: string;
+    if (
+      rawError.includes("Production storage is not configured") ||
+      rawError.includes("BLOB_READ_WRITE_TOKEN")
+    ) {
+      sanitizedError = "Production storage is not configured.";
+    } else {
+      sanitizedError = rawError
+        .replace(/postgresql:\/\/[^@]+@/gi, "postgresql://***:***@")
+        .replace(/\/var\/task\/[^\s]+/gi, "[server-path]")
+        .replace(/[\/\\][a-zA-Z0-9_\-./]+\/(storage|documents)[^\s]*/gi, "[storage-path]")
+        .replace(/\/[a-zA-Z0-9_\-./]+\//g, "");
+    }
 
     res.statusCode = 500;
     res.setHeader("Content-Type", "application/json");

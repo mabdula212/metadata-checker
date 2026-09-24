@@ -48,3 +48,13 @@ export interface StorageKeyInfo {
   storageKey: string;
   storedFileName: string;
 }
+
+/**
+ * Detects whether the current execution environment is a production or Vercel serverless environment.
+ */
+export function isProductionEnvironment(): boolean {
+  if (process.env.VERCEL === "1" || process.env.VERCEL === "true") return true;
+  if (process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview") return true;
+  if (process.env.NODE_ENV === "production") return true;
+  return false;
+}
