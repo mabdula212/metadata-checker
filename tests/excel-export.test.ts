@@ -4,24 +4,24 @@ import fs from "fs";
 import path from "path";
 import ExcelJS from "exceljs";
 import { Prisma } from "@prisma/client";
-import { prisma } from "../lib/db/prisma";
+import { prisma } from "../lib/db/prisma.js";
 import {
   LocalStorageProvider,
   setStorageProvider,
   getStorageProvider,
-} from "../lib/storage";
+} from "../lib/storage/index.js";
 import {
   generateBankStatementWorkbook,
   exportBankStatementToExcel,
   getExportFile,
-} from "../lib/excel";
+} from "../lib/excel/index.js";
 import {
   toExcelDate,
   toExcelNumeric,
   enforceMaskedAccountNumber,
   generateSafeExportFileName,
-} from "../lib/excel/formatter";
-import type { BankStatementExportData } from "../lib/excel/types";
+} from "../lib/excel/formatter.js";
+import type { BankStatementExportData } from "../lib/excel/types.js";
 
 const TEST_EXPORT_DIR = path.join(process.cwd(), "tmp_test_exports");
 

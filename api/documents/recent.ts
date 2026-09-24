@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import { Role } from "@prisma/client";
-import { getRecentDocuments } from "../../lib/db/documents";
-import { requireAuth, logAuditEvent } from "../../lib/auth";
+import { getRecentDocuments } from "../../lib/db/documents.js";
+import { requireAuth, logAuditEvent } from "../../lib/auth/index.js";
 
 /**
  * API handler to fetch recent analyzed documents.

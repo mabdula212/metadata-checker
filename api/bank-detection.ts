@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { runBankDetectionOnDocument } from "../lib/db/documents";
-import { requireDocumentOwner, logAuditEvent } from "../lib/auth";
+import { runBankDetectionOnDocument } from "../lib/db/documents.js";
+import { requireDocumentOwner, logAuditEvent } from "../lib/auth/index.js";
 
 /**
  * Server-side API handler for Bank Statement Detection.

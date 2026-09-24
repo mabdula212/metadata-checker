@@ -1,4 +1,4 @@
-import type { StorageProvider, UploadOptions, UploadResult } from "./types";
+import type { StorageProvider, UploadOptions, UploadResult } from "./types.js";
 
 /**
  * VercelBlobStorageProvider

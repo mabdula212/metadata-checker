@@ -4,12 +4,12 @@ import {
   hashPassword,
   verifyPassword,
   validatePasswordStrength,
-} from "../lib/auth/password";
+} from "../lib/auth/password.js";
 import {
   checkRateLimit,
   resetRateLimit,
-} from "../lib/auth/rate-limiter";
-import { sanitizeAuditMetadata } from "../lib/auth/audit";
+} from "../lib/auth/rate-limiter.js";
+import { sanitizeAuditMetadata } from "../lib/auth/audit.js";
 import { Role, UserStatus } from "@prisma/client";
 
 describe("Authentication & Security Module", () => {
@@ -128,7 +128,7 @@ describe("Authentication & Security Module", () => {
 
   describe("Session Security & Token Hashing", () => {
     it("should hash session tokens with SHA-256 and never persist raw tokens", async () => {
-      const { hashSessionToken } = await import("../lib/auth/session");
+      const { hashSessionToken } = await import("../lib/auth/session.js");
       const rawToken = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
       const hash1 = hashSessionToken(rawToken);
       const hash2 = hashSessionToken(rawToken);
@@ -139,7 +139,7 @@ describe("Authentication & Security Module", () => {
     });
 
     it("should build secure HttpOnly cookies with SameSite=Lax", async () => {
-      const { buildSessionCookie, buildClearSessionCookie } = await import("../lib/auth/config");
+      const { buildSessionCookie, buildClearSessionCookie } = await import("../lib/auth/config.js");
       const cookie = buildSessionCookie("test-token-123", 3600);
 
       assert.ok(cookie.includes("HttpOnly"), "Cookie must be HttpOnly");
@@ -154,7 +154,7 @@ describe("Authentication & Security Module", () => {
 
   describe("CSRF Defense & Origin Verification", () => {
     it("should allow safe methods and bearer authentication without CSRF restriction", async () => {
-      const { verifyCsrf } = await import("../lib/auth/guards");
+      const { verifyCsrf } = await import("../lib/auth/guards.js");
 
       // Safe GET request
       const getReq = { method: "GET", headers: {} } as any;
@@ -169,7 +169,7 @@ describe("Authentication & Security Module", () => {
     });
 
     it("should block cross-site cookie-authenticated state-changing requests", async () => {
-      const { verifyCsrf } = await import("../lib/auth/guards");
+      const { verifyCsrf } = await import("../lib/auth/guards.js");
 
       // Sec-Fetch-Site cross-site
       const crossSiteReq = {
@@ -207,7 +207,7 @@ describe("Authentication & Security Module", () => {
 
   describe("Error Message Sanitization", () => {
     it("should sanitize database internals, passwords, and file paths", async () => {
-      const { sanitizeClientErrorMessage } = await import("../lib/auth/guards");
+      const { sanitizeClientErrorMessage } = await import("../lib/auth/guards.js");
 
       const prismaErr = new Error("Invalid `prisma.user.create()` invocation: Unique constraint failed on email");
       const cleanPrisma = sanitizeClientErrorMessage(prismaErr);
@@ -226,7 +226,7 @@ describe("Authentication & Security Module", () => {
 
   describe("User Registration Handler", () => {
     it("should reject registration with invalid email or weak password", async () => {
-      const registerHandler = (await import("../api/auth/register")).default;
+      const registerHandler = (await import("../api/auth/register.js")).default;
 
       // Test weak password
       let statusCode = 0;
@@ -255,7 +255,7 @@ describe("Authentication & Security Module", () => {
 
   describe("Production Seed Gating", () => {
     it("should strictly refuse to seed development users in production environment", async () => {
-      const { seedInitialUsers } = await import("../lib/auth/init");
+      const { seedInitialUsers } = await import("../lib/auth/init.js");
       const prevEnv = process.env.NODE_ENV;
       try {
         process.env.NODE_ENV = "production";

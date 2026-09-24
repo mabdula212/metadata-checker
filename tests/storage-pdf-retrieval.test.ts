@@ -12,12 +12,12 @@ import {
   getDocumentPdf,
   getStorageProvider,
   setStorageProvider,
-} from "../lib/storage";
-import { prisma } from "../lib/db/prisma";
-import { defaultBankDetectionEngine } from "../lib/bank-detection";
-import { defaultTransactionExtractionEngine } from "../lib/transaction-extraction";
-import { extractPdfText } from "../lib/pdf/pdf-text-extractor";
-import { findDuplicateDocument } from "../lib/db/documents";
+} from "../lib/storage/index.js";
+import { prisma } from "../lib/db/prisma.js";
+import { defaultBankDetectionEngine } from "../lib/bank-detection/index.js";
+import { defaultTransactionExtractionEngine } from "../lib/transaction-extraction/index.js";
+import { extractPdfText } from "../lib/pdf/pdf-text-extractor.js";
+import { findDuplicateDocument } from "../lib/db/documents.js";
 
 // Temporary test directory for isolated storage
 const TEST_STORAGE_DIR = path.join(process.cwd(), "tmp_test_storage");

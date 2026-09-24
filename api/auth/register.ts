@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import { Role, UserStatus } from "@prisma/client";
-import { prisma } from "../../lib/db/prisma";
+import { prisma } from "../../lib/db/prisma.js";
 import {
   hashPassword,
   validatePasswordStrength,
@@ -8,7 +8,7 @@ import {
   buildSessionCookie,
   checkRateLimit,
   logAuditEvent,
-} from "../../lib/auth";
+} from "../../lib/auth/index.js";
 
 /**
  * API Handler for User Self-Registration ("Create Account").

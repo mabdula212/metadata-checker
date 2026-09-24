@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import type { StorageProvider, UploadOptions, UploadResult } from "./types";
+import type { StorageProvider, UploadOptions, UploadResult } from "./types.js";
 
 /**
  * LocalStorageProvider

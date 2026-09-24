@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { checkDatabaseHealth } from "../lib/db/db-util";
+import { checkDatabaseHealth } from "../lib/db/db-util.js";
 
 /**
  * Minimal server-side database health-check function.

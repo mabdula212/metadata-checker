@@ -2,18 +2,18 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig, type Plugin } from 'vite';
-import pdfInspectHandler from './api/pdf/inspect';
-import recentDocumentsHandler from './api/documents/recent';
-import healthHandler from './api/health';
-import bankDetectionHandler from './api/bank-detection';
-import transactionExtractionHandler from './api/transaction-extraction';
-import excelExportHandler from './api/excel-export';
-import loginHandler from './api/auth/login';
-import registerHandler from './api/auth/register';
-import logoutHandler from './api/auth/logout';
-import sessionHandler from './api/auth/session';
-import adminUsersHandler from './api/admin/users';
-import adminResetPasswordHandler from './api/admin/reset-password';
+import pdfInspectHandler from './api/pdf/inspect.js';
+import recentDocumentsHandler from './api/documents/recent.js';
+import healthHandler from './api/health.js';
+import bankDetectionHandler from './api/bank-detection.js';
+import transactionExtractionHandler from './api/transaction-extraction.js';
+import excelExportHandler from './api/excel-export.js';
+import loginHandler from './api/auth/login.js';
+import registerHandler from './api/auth/register.js';
+import logoutHandler from './api/auth/logout.js';
+import sessionHandler from './api/auth/session.js';
+import adminUsersHandler from './api/admin/users.js';
+import adminResetPasswordHandler from './api/admin/reset-password.js';
 
 function apiPlugin(): Plugin {
   const handleApi = (req: any, res: any, next: any) => {
@@ -87,8 +87,12 @@ export default defineConfig(() => {
       },
     },
     server: {
+      allowedHosts: true,
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+    },
+    preview: {
+      allowedHosts: true,
     },
   };
 });

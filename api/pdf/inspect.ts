@@ -1,8 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import Busboy from "busboy";
-import { inspectPdfMetadata, MAX_PDF_SIZE_BYTES } from "../../lib/pdf/pdf-inspector";
-import { processAndSaveDocument } from "../../lib/db/documents";
-import { requireAuth, logAuditEvent } from "../../lib/auth";
+import { inspectPdfMetadata, MAX_PDF_SIZE_BYTES } from "../../lib/pdf/pdf-inspector.js";
+import { processAndSaveDocument } from "../../lib/db/documents.js";
+import { requireAuth, logAuditEvent } from "../../lib/auth/index.js";
 
 interface ParsedUpload {
   fileName: string;

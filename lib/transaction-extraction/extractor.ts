@@ -2,23 +2,23 @@ import type {
   BankTransactionParser,
   TransactionParserInput,
   TransactionExtractionResult,
-} from "./types";
-import { normalizeTransactions } from "./normalizer";
-import { validateExtractionResult } from "./validator";
+} from "./types.js";
+import { normalizeTransactions } from "./normalizer.js";
+import { validateExtractionResult } from "./validator.js";
 
-import { BcaTransactionParser } from "./parsers/bca";
-import { BriTransactionParser } from "./parsers/bri";
-import { MandiriTransactionParser } from "./parsers/mandiri";
-import { BniTransactionParser } from "./parsers/bni";
-import { CimbNiagaTransactionParser } from "./parsers/cimb-niaga";
-import { DanamonTransactionParser } from "./parsers/danamon";
-import { PermataTransactionParser } from "./parsers/permata";
-import { BankMegaTransactionParser } from "./parsers/bank-mega";
-import { BtnTransactionParser } from "./parsers/btn";
-import { OcbcTransactionParser } from "./parsers/ocbc";
-import { MaybankTransactionParser } from "./parsers/maybank";
-import { BsiTransactionParser } from "./parsers/bsi";
-import { GenericTransactionParser } from "./parsers/generic";
+import { BcaTransactionParser } from "./parsers/bca.js";
+import { BriTransactionParser } from "./parsers/bri.js";
+import { MandiriTransactionParser } from "./parsers/mandiri.js";
+import { BniTransactionParser } from "./parsers/bni.js";
+import { CimbNiagaTransactionParser } from "./parsers/cimb-niaga.js";
+import { DanamonTransactionParser } from "./parsers/danamon.js";
+import { PermataTransactionParser } from "./parsers/permata.js";
+import { BankMegaTransactionParser } from "./parsers/bank-mega.js";
+import { BtnTransactionParser } from "./parsers/btn.js";
+import { OcbcTransactionParser } from "./parsers/ocbc.js";
+import { MaybankTransactionParser } from "./parsers/maybank.js";
+import { BsiTransactionParser } from "./parsers/bsi.js";
+import { GenericTransactionParser } from "./parsers/generic.js";
 
 export class TransactionExtractionEngine {
   private parsers: BankTransactionParser[];

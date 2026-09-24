@@ -1,5 +1,5 @@
-import type { BankDetector, BankDetectionInput, BankDetectionCandidate } from "../types";
-import { extractStatementPeriod, extractAccountHolderName } from "../utils";
+import type { BankDetector, BankDetectionInput, BankDetectionCandidate } from "../types.js";
+import { extractStatementPeriod, extractAccountHolderName } from "../utils.js";
 
 export class BcaDetector implements BankDetector {
   readonly bankCode = "BCA";
@@ -44,7 +44,10 @@ export class BcaDetector implements BankDetector {
     }
 
     // 3. BCA Statement Headers & Terminology
-    if (upperText.includes("REKENING KORAN") || upperText.includes("MUTASI REKENING")) {
+    if (upperText.includes("REKENING TAHAPAN") || upperText.includes("TAHAPAN BCA")) {
+      matchedSignals.push("BCA signature product header 'Rekening Tahapan / Tahapan BCA' detected");
+      score += 25;
+    } else if (upperText.includes("REKENING KORAN") || upperText.includes("MUTASI REKENING")) {
       matchedSignals.push("Statement header 'Rekening Koran / Mutasi Rekening' detected");
       score += 15;
     }

@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { prisma } from "../../lib/db/prisma";
+import { prisma } from "../../lib/db/prisma.js";
 import {
   verifyPassword,
   createSession,
@@ -7,7 +7,7 @@ import {
   checkRateLimit,
   resetRateLimit,
   logAuditEvent,
-} from "../../lib/auth";
+} from "../../lib/auth/index.js";
 
 /**
  * API Handler for User Login.

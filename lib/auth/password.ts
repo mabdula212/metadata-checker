@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { MIN_PASSWORD_LENGTH } from "./config";
+import { MIN_PASSWORD_LENGTH } from "./config.js";
 
 const BCRYPT_SALT_ROUNDS = 12;
 

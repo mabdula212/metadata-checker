@@ -3,8 +3,8 @@ import type {
   ReviewRow,
   TransactionExtractionValidation,
   ExtractionStatus,
-} from "./types";
-import { validateBalanceProgression } from "./utils/balance-parser";
+} from "./types.js";
+import { validateBalanceProgression } from "./utils/balance-parser.js";
 
 export interface ValidationInput {
   transactions: ParsedTransaction[];

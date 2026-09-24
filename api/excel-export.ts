@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { exportBankStatementToExcel, getExportFile } from "../lib/excel";
-import { requireDocumentOwner, requireExportOwner, logAuditEvent } from "../lib/auth";
+import { exportBankStatementToExcel, getExportFile } from "../lib/excel/index.js";
+import { requireDocumentOwner, requireExportOwner, logAuditEvent } from "../lib/auth/index.js";
 
 /**
  * API handler for Bank Statement Excel Export Engine.

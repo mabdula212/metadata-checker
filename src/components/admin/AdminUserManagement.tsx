@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { safeApiFetch } from "../../lib/api-client";
 import {
   Users,
   UserPlus,
@@ -53,12 +54,11 @@ export const AdminUserManagement: React.FC = () => {
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/admin/users");
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setUsers(data.users);
+      const res = await safeApiFetch<{ success: boolean; users: ManagedUser[]; error?: string }>("/api/admin/users");
+      if (res.ok && res.data?.success) {
+        setUsers(res.data.users);
       } else {
-        setErrorMessage(data.error || "Failed to load user records.");
+        setErrorMessage(res.error || res.data?.error || "Failed to load user records.");
       }
     } catch {
       setErrorMessage("Network error loading users.");
@@ -83,7 +83,7 @@ export const AdminUserManagement: React.FC = () => {
     setSuccessMessage(null);
 
     try {
-      const res = await fetch("/api/admin/users", {
+      const res = await safeApiFetch<any>("/api/admin/users", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -91,12 +91,11 @@ export const AdminUserManagement: React.FC = () => {
           status: nextStatus,
         }),
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      if (res.ok && res.data?.success) {
         setSuccessMessage(`User account successfully ${nextStatus === "ACTIVE" ? "activated" : "deactivated"}.`);
         await fetchUsers();
       } else {
-        setErrorMessage(data.error || "Failed to update user status.");
+        setErrorMessage(res.error || res.data?.error || "Failed to update user status.");
       }
     } catch {
       setErrorMessage("Network error updating user status.");
@@ -117,7 +116,7 @@ export const AdminUserManagement: React.FC = () => {
     setSuccessMessage(null);
 
     try {
-      const res = await fetch("/api/admin/users", {
+      const res = await safeApiFetch<any>("/api/admin/users", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -125,12 +124,11 @@ export const AdminUserManagement: React.FC = () => {
           role: nextRole,
         }),
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      if (res.ok && res.data?.success) {
         setSuccessMessage(`User role changed to ${nextRole}.`);
         await fetchUsers();
       } else {
-        setErrorMessage(data.error || "Failed to update user role.");
+        setErrorMessage(res.error || res.data?.error || "Failed to update user role.");
       }
     } catch {
       setErrorMessage("Network error updating role.");
@@ -151,7 +149,7 @@ export const AdminUserManagement: React.FC = () => {
     setSuccessMessage(null);
 
     try {
-      const res = await fetch("/api/admin/users", {
+      const res = await safeApiFetch<any>("/api/admin/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -161,8 +159,7 @@ export const AdminUserManagement: React.FC = () => {
           role: newRole,
         }),
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      if (res.ok && res.data?.success) {
         setSuccessMessage(`New user ${newEmail} created successfully.`);
         setShowCreateModal(false);
         setNewEmail("");
@@ -171,7 +168,7 @@ export const AdminUserManagement: React.FC = () => {
         setNewRole("USER");
         await fetchUsers();
       } else {
-        setErrorMessage(data.error || "Failed to create user.");
+        setErrorMessage(res.error || res.data?.error || "Failed to create user.");
       }
     } catch {
       setErrorMessage("Network error creating user.");
@@ -192,7 +189,7 @@ export const AdminUserManagement: React.FC = () => {
     setSuccessMessage(null);
 
     try {
-      const res = await fetch("/api/admin/reset-password", {
+      const res = await safeApiFetch<any>("/api/admin/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -200,14 +197,13 @@ export const AdminUserManagement: React.FC = () => {
           newPassword: resetNewPassword,
         }),
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      if (res.ok && res.data?.success) {
         setSuccessMessage(`Password reset for ${selectedUserForReset.email}.`);
         setShowResetModal(false);
         setSelectedUserForReset(null);
         setResetNewPassword("");
       } else {
-        setErrorMessage(data.error || "Failed to reset password.");
+        setErrorMessage(res.error || res.data?.error || "Failed to reset password.");
       }
     } catch {
       setErrorMessage("Network error resetting password.");

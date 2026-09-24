@@ -63,7 +63,7 @@ export function detectCandidateRows(
 
     // Check if this line is an explicit header/footer boundary that closes transaction rows
     const isBoundary =
-      /^(?:saldo\s*awal|saldo\s*akhir|total\s*mutasi|total\s*kredit|total\s*debet|halaman|page\s*\d+)/i.test(
+      /^(?:saldo\s*awal|saldo\s*akhir|total\s*mutasi|mutasi\s*cr|mutasi\s*db|total\s*kredit|total\s*debet|halaman|page\s*\d+|bersambung\s*ke)/i.test(
         line
       );
     if (isBoundary) {
@@ -105,7 +105,7 @@ export function detectCandidateRows(
           !/^bca|bri|mandiri|bni|cimb|danamon|permata|mega|btn|ocbc|maybank|bsi/i.test(
             line
           ) &&
-          !/^(?:kantor|cabang|telepon|call\s*center|hal\s*\d+)/i.test(line)
+          !/^(?:kantor|cabang|telepon|call\s*center|hal\s*\d+|bersambung\s*ke)/i.test(line)
         ) {
           currentCandidate.continuationLines.push(line);
         }

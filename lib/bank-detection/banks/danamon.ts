@@ -1,5 +1,5 @@
-import type { BankDetector, BankDetectionInput, BankDetectionCandidate } from "../types";
-import { extractStatementPeriod, extractAccountHolderName } from "../utils";
+import type { BankDetector, BankDetectionInput, BankDetectionCandidate } from "../types.js";
+import { extractStatementPeriod, extractAccountHolderName } from "../utils.js";
 
 export class DanamonDetector implements BankDetector {
   readonly bankCode = "DANAMON";

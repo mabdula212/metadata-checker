@@ -3,16 +3,16 @@ import type {
   TransactionParserInput,
   ParsedTransaction,
   ReviewRow,
-} from "../types";
-import { parseTransactionDate } from "../utils/date-parser";
-import { parseFinancialAmount } from "../utils/amount-parser";
-import { extractStatementBalances } from "../utils/balance-parser";
+} from "../types.js";
+import { parseTransactionDate } from "../utils/date-parser.js";
+import { parseFinancialAmount } from "../utils/amount-parser.js";
+import { extractStatementBalances } from "../utils/balance-parser.js";
 import {
   cleanTransactionDescription,
   extractReferenceNumber,
   deriveTransactionType,
-} from "../utils/text-cleaner";
-import { detectCandidateRows } from "../utils/row-detector";
+} from "../utils/text-cleaner.js";
+import { detectCandidateRows } from "../utils/row-detector.js";
 
 export class GenericTransactionParser implements BankTransactionParser {
   readonly bankCode = "GENERIC";

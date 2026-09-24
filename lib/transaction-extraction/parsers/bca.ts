@@ -3,16 +3,16 @@ import type {
   TransactionParserInput,
   ParsedTransaction,
   ReviewRow,
-} from "../types";
-import { parseTransactionDate } from "../utils/date-parser";
-import { parseFinancialAmount } from "../utils/amount-parser";
-import { extractStatementBalances } from "../utils/balance-parser";
+} from "../types.js";
+import { parseTransactionDate } from "../utils/date-parser.js";
+import { parseFinancialAmount } from "../utils/amount-parser.js";
+import { extractStatementBalances } from "../utils/balance-parser.js";
 import {
   cleanTransactionDescription,
   extractReferenceNumber,
   deriveTransactionType,
-} from "../utils/text-cleaner";
-import { detectCandidateRows } from "../utils/row-detector";
+} from "../utils/text-cleaner.js";
+import { detectCandidateRows } from "../utils/row-detector.js";
 
 export class BcaTransactionParser implements BankTransactionParser {
   readonly bankCode = "BCA";
@@ -33,13 +33,31 @@ export class BcaTransactionParser implements BankTransactionParser {
     const reviewRows: ReviewRow[] = [];
     let totalRowsDetected = 0;
 
-    const { openingBalance, closingBalance } = extractStatementBalances(input.fullText);
+    let { openingBalance, closingBalance } = extractStatementBalances(input.fullText);
+    let runningBalance: number | null = openingBalance ? parseFloat(openingBalance) : null;
 
     for (const page of input.pages) {
       const candidates = detectCandidateRows(page.text, page.pageNumber);
       totalRowsDetected += candidates.length;
 
       for (const cand of candidates) {
+        // Special case: Initial "SALDO AWAL" line in BCA statements
+        // Example: "01/08 SALDO AWAL 245,066.47"
+        if (/SALDO\s+AWAL/i.test(cand.leadLine)) {
+          const saldoMatch = cand.leadLine.match(/([0-9.,]+)$/);
+          if (saldoMatch) {
+            const parsed = parseFinancialAmount(saldoMatch[1]);
+            if (parsed) {
+              runningBalance = parseFloat(parsed.value);
+              if (!openingBalance) {
+                openingBalance = parsed.value;
+              }
+            }
+          }
+          // Do not treat opening balance record as an operational transaction
+          continue;
+        }
+
         // Date parsing: BCA typically uses DD/MM format
         const isoDate = parseTransactionDate(cand.dateStr, {
           statementPeriodStart: input.statementPeriodStart,
@@ -57,21 +75,50 @@ export class BcaTransactionParser implements BankTransactionParser {
         }
 
         // BCA Line structure:
-        // [DATE] [DESCRIPTION + CB...] [MUTASI] [CR]? [SALDO]
-        // Example: "01/08 SETORAN AWAL 0010 10,000,000.00 CR 10,000,000.00"
-        // Example: "02/08 TRSF E-BANKING DB 0010 500,000.00 9,500,000.00"
-        // In multi-line layouts, the amounts may appear at the end of lead line OR at the end of a continuation line.
-        const amountTailRegex = /([0-9.,]+)\s*(CR|DB)?\s+([0-9.,]+)$/i;
-        let match = cand.leadLine.match(amountTailRegex);
+        // Case 1 (Full): [DATE] [DESCRIPTION + CB...] [MUTASI] [CR|DB]? [SALDO]
+        // Case 2 (Omitted Saldo): [DATE] [DESCRIPTION + CB...] [MUTASI] [CR|DB]?
+        // Currency amounts must be preceded by whitespace or start-of-line and not a date slash
+        const dualAmountRegex = /(?:^|\s)([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?|[0-9]+[.,][0-9]{2})\s*(CR|DB)?\s+([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?|[0-9]+[.,][0-9]{2})$/i;
+        const singleAmountRegex = /(?:^|\s)([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?|[0-9]+[.,][0-9]{2})\s*(CR|DB)?$/i;
+
+        let match: RegExpMatchArray | null = null;
+        let isDual = true;
         let amountLineIndex = -1;
 
-        if (!match && cand.continuationLines.length > 0) {
+        // In multi-line layouts, the amounts are placed at the bottom (continuation lines).
+        // Check continuation lines from the bottom up first.
+        if (cand.continuationLines.length > 0) {
           for (let i = cand.continuationLines.length - 1; i >= 0; i--) {
-            const contMatch = cand.continuationLines[i].match(amountTailRegex);
-            if (contMatch) {
-              match = contMatch;
+            const dualMatch = cand.continuationLines[i].match(dualAmountRegex);
+            if (dualMatch) {
+              match = dualMatch;
               amountLineIndex = i;
+              isDual = true;
               break;
+            }
+            const singleMatch = cand.continuationLines[i].match(singleAmountRegex);
+            if (singleMatch) {
+              match = singleMatch;
+              amountLineIndex = i;
+              isDual = false;
+              break;
+            }
+          }
+        }
+
+        // If no amount found on continuation lines, inspect leadLine
+        if (!match) {
+          const dualMatch = cand.leadLine.match(dualAmountRegex);
+          if (dualMatch) {
+            match = dualMatch;
+            isDual = true;
+            amountLineIndex = -1;
+          } else {
+            const singleMatch = cand.leadLine.match(singleAmountRegex);
+            if (singleMatch) {
+              match = singleMatch;
+              isDual = false;
+              amountLineIndex = -1;
             }
           }
         }
@@ -88,22 +135,22 @@ export class BcaTransactionParser implements BankTransactionParser {
 
         const rawMutasi = match[1];
         const rawFlag = (match[2] || "").toUpperCase();
-        const rawSaldo = match[3];
+        const rawSaldo = isDual ? match[3] : null;
 
         const parsedMutasi = parseFinancialAmount(rawMutasi);
-        const parsedSaldo = parseFinancialAmount(rawSaldo);
+        const parsedSaldo = rawSaldo ? parseFinancialAmount(rawSaldo) : null;
 
-        if (!parsedMutasi || !parsedSaldo) {
+        if (!parsedMutasi || (isDual && !parsedSaldo)) {
           reviewRows.push({
             pageNumber: page.pageNumber,
             rawSourceText: cand.allText,
             reason: "AMBIGUOUS_AMOUNT",
-            extractedFields: { rawMutasi, rawSaldo },
+            extractedFields: { rawMutasi, rawSaldo: rawSaldo || undefined },
           });
           continue;
         }
 
-        // Determine description by stripping the date and the trailing amounts
+        // Determine description by stripping the date and the trailing matched amounts
         let leadDesc = "";
         let otherLines: string[] = [];
 
@@ -128,14 +175,47 @@ export class BcaTransactionParser implements BankTransactionParser {
 
         const fullRawDesc = [leadDesc, ...otherLines].join("\n");
         const description = cleanTransactionDescription(fullRawDesc);
+        const upperDesc = fullRawDesc.toUpperCase();
 
-        // Direction: In BCA, "CR" indicates Credit. Absence of "CR" (or "DB") indicates Debit.
-        const isCredit = rawFlag === "CR" || parsedMutasi.indicator === "CR";
+        // Direction: In BCA, explicit CR flag or CR markers indicate credit
+        let isCredit = false;
+        if (rawFlag === "CR" || parsedMutasi.indicator === "CR") {
+          isCredit = true;
+        } else if (rawFlag === "DB" || parsedMutasi.indicator === "DB") {
+          isCredit = false;
+        } else if (
+          upperDesc.includes("TRSF E-BANKING CR") ||
+          upperDesc.includes("BI-FAST CR") ||
+          upperDesc.includes("BIF TRANSFER DR") ||
+          upperDesc.includes("SETORAN") ||
+          upperDesc.includes("BUNGA")
+        ) {
+          isCredit = true;
+        } else {
+          // In BCA, absence of CR or presence of DB indicators defaults to Debit
+          isCredit = false;
+        }
         const isDebit = !isCredit;
 
         const debit = isDebit ? parsedMutasi.value : null;
         const credit = isCredit ? parsedMutasi.value : null;
-        const balance = parsedSaldo.value;
+
+        // Balance calculation & progression
+        let balance: string | null = null;
+        if (parsedSaldo) {
+          balance = parsedSaldo.value;
+          runningBalance = parseFloat(parsedSaldo.value);
+        } else if (runningBalance !== null) {
+          const mutasiNum = parseFloat(parsedMutasi.value);
+          if (isCredit) {
+            runningBalance += mutasiNum;
+          } else {
+            runningBalance -= mutasiNum;
+          }
+          balance = runningBalance.toFixed(2);
+        }
+
+        const safeBalance: string = balance || "0.00";
 
         const referenceNumber = extractReferenceNumber(fullRawDesc);
         const transactionType = deriveTransactionType(description, isCredit, isDebit);
@@ -144,6 +224,7 @@ export class BcaTransactionParser implements BankTransactionParser {
         const confidenceReasons: string[] = ["Valid BCA date", "Valid amounts"];
         if (referenceNumber) confidenceReasons.push("Reference number extracted");
         if (cand.continuationLines.length > 0) confidenceReasons.push("Multi-line description joined");
+        if (!isDual && balance) confidenceReasons.push("Calculated running balance");
 
         transactions.push({
           transactionDate: isoDate,
@@ -152,7 +233,7 @@ export class BcaTransactionParser implements BankTransactionParser {
           referenceNumber,
           debit,
           credit,
-          balance,
+          balance: safeBalance,
           transactionType,
           confidence: "HIGH",
           confidenceReasons,

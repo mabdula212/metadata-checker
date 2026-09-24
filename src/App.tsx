@@ -38,6 +38,7 @@ import { RecentFilesTable } from "./components/RecentFilesTable";
 import type { TransactionExtractionResultUi } from "./types/transaction";
 import { AuthProvider, useAuth, type UserProfile } from "./context/AuthContext";
 import { LoginPage } from "./components/auth/LoginPage";
+import { safeApiFetch } from "./lib/api-client";
 import { AdminUserManagement } from "./components/admin/AdminUserManagement";
 
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
@@ -153,11 +154,11 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
   const fetchRecentFiles = useCallback(async () => {
     try {
       setLoadingRecent(true);
-      const res = await fetch("/api/documents/recent");
-      if (!res.ok) throw new Error("Failed to load recent files");
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        setRecentFiles(json.data);
+      const res = await safeApiFetch<{ success: boolean; data: RecentDocumentItem[] }>("/api/documents/recent");
+      if (res.ok && res.data?.success && Array.isArray(res.data.data)) {
+        setRecentFiles(res.data.data);
+      } else {
+        setRecentFiles([]);
       }
     } catch {
       // Fallback silently if API is unreachable
@@ -297,41 +298,38 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
    */
   const fetchExistingTransactions = async (documentId: string) => {
     try {
-      const res = await fetch(`/api/transaction-extraction?documentId=${documentId}`);
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.statement?.transactions?.length > 0) {
-          const txs = json.statement.transactions.map((t: any) => ({
-            id: t.id,
-            transactionDate: new Date(t.transactionDate).toISOString().split("T")[0],
-            description: t.description,
-            referenceNumber: t.referenceNumber,
-            debit: t.debit ? t.debit.toString() : null,
-            credit: t.credit ? t.credit.toString() : null,
-            balance: t.balance ? t.balance.toString() : "0.00",
-            transactionType: t.transactionType,
-            category: t.category,
-          }));
+      const res = await safeApiFetch<any>(`/api/transaction-extraction?documentId=${documentId}`);
+      if (res.ok && res.data?.success && res.data.statement?.transactions?.length > 0) {
+        const txs = res.data.statement.transactions.map((t: any) => ({
+          id: t.id,
+          transactionDate: new Date(t.transactionDate).toISOString().split("T")[0],
+          description: t.description,
+          referenceNumber: t.referenceNumber,
+          debit: t.debit ? t.debit.toString() : null,
+          credit: t.credit ? t.credit.toString() : null,
+          balance: t.balance ? t.balance.toString() : "0.00",
+          transactionType: t.transactionType,
+          category: t.category,
+        }));
 
-          setTransactionExtractionResult({
-            documentId,
-            statementId: json.statement.id,
-            status: "COMPLETED",
-            summary: {
-              totalRowsDetected: txs.length,
-              totalTransactionsParsed: txs.length,
-              totalTransactionsRejected: 0,
-              totalTransactionsNeedingReview: 0,
-              totalCredit: json.statement.totalCredit?.toString() || "0.00",
-              totalDebit: json.statement.totalDebit?.toString() || "0.00",
-              openingBalance: json.statement.openingBalance?.toString() || null,
-              closingBalance: json.statement.closingBalance?.toString() || null,
-              balanceReconciliationStatus: "VALID",
-            },
-            transactions: txs,
-            reviewRows: [],
-          });
-        }
+        setTransactionExtractionResult({
+          documentId,
+          statementId: res.data.statement.id,
+          status: "COMPLETED",
+          summary: {
+            totalRowsDetected: txs.length,
+            totalTransactionsParsed: txs.length,
+            totalTransactionsRejected: 0,
+            totalTransactionsNeedingReview: 0,
+            totalCredit: res.data.statement.totalCredit?.toString() || "0.00",
+            totalDebit: res.data.statement.totalDebit?.toString() || "0.00",
+            openingBalance: res.data.statement.openingBalance?.toString() || null,
+            closingBalance: res.data.statement.closingBalance?.toString() || null,
+            balanceReconciliationStatus: "VALID",
+          },
+          transactions: txs,
+          reviewRows: [],
+        });
       }
     } catch {
       // ignore
@@ -347,7 +345,7 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
   ) => {
     try {
       setIsExtractingTransactions(true);
-      const res = await fetch("/api/transaction-extraction", {
+      const res = await safeApiFetch<any>("/api/transaction-extraction", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -356,8 +354,8 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
         }),
       });
 
-      const json = await res.json();
-      if (res.ok && json.success) {
+      if (res.ok && res.data?.success) {
+        const json = res.data;
         setTransactionExtractionResult({
           documentId: json.documentId,
           statementId: json.statementId,
@@ -385,7 +383,7 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
   ) => {
     try {
       setIsDetectingBank(true);
-      const res = await fetch("/api/bank-detection", {
+      const res = await safeApiFetch<BankDetectionApiResponse>("/api/bank-detection", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -394,9 +392,8 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
         }),
       });
 
-      const json: BankDetectionApiResponse = await res.json();
-      if (res.ok && json.success && json.detection) {
-        setBankDetectionResult(json.detection);
+      if (res.ok && res.data?.success && res.data.detection) {
+        setBankDetectionResult(res.data.detection);
       } else {
         setBankDetectionResult(null);
       }
@@ -429,46 +426,42 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
 
       // 3. Extracting metadata
       setProcessingStage("EXTRACTING");
-      const response = await fetch("/api/pdf/inspect", {
+      const inspectRes = await safeApiFetch<InspectApiResponse>("/api/pdf/inspect", {
         method: "POST",
         body: formData,
       });
 
-      const json: InspectApiResponse = await response.json();
-
-      if (!response.ok || !json.success || !json.data) {
-        throw new Error(json.error || "Server failed to extract PDF metadata.");
+      if (!inspectRes.ok || !inspectRes.data?.success || !inspectRes.data?.data) {
+        throw new Error(inspectRes.error || inspectRes.data?.error || "Server failed to extract PDF metadata.");
       }
+      const inspectData = inspectRes.data.data;
+      const isDuplicate = Boolean(inspectRes.data.isDuplicate);
 
       // 4. Detecting Bank & Statement Period
       setProcessingStage("DETECTING");
       const base64 = await base64Promise;
 
-      const detectionPromise = fetch("/api/bank-detection", {
+      const detectionRes = await safeApiFetch<BankDetectionApiResponse>("/api/bank-detection", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          documentId: json.data.document.id,
+          documentId: inspectData.document.id,
           fileBase64: base64,
         }),
-      })
-        .then((r) => r.json())
-        .catch(() => null);
+      });
 
       // 5. Saving result
       setProcessingStage("SAVING");
-      const detectionJson: BankDetectionApiResponse | null = await detectionPromise;
-
-      if (detectionJson && detectionJson.success && detectionJson.detection) {
-        setBankDetectionResult(detectionJson.detection);
+      if (detectionRes.ok && detectionRes.data?.success && detectionRes.data?.detection) {
+        setBankDetectionResult(detectionRes.data.detection);
 
         // If detected as a text-based bank statement, automatically extract transactions
         if (
-          detectionJson.detection.documentType === "BANK_STATEMENT" &&
-          !detectionJson.detection.isScannedOrImageOnly
+          detectionRes.data.detection.documentType === "BANK_STATEMENT" &&
+          !detectionRes.data.detection.isScannedOrImageOnly
         ) {
           setProcessingStage("EXTRACTING_TRANSACTIONS");
-          await triggerTransactionExtraction(json.data.document.id, base64);
+          await triggerTransactionExtraction(inspectData.document.id, base64);
         }
       } else {
         setBankDetectionResult(null);
@@ -477,9 +470,9 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
       // 6. Completed
       setProcessingStage("COMPLETED");
       setActiveResult({
-        document: json.data.document,
-        metadata: json.data.metadata,
-        isDuplicate: Boolean(json.isDuplicate),
+        document: inspectData.document,
+        metadata: inspectData.metadata,
+        isDuplicate,
       });
 
       // Refresh recent files list

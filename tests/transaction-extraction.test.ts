@@ -6,7 +6,7 @@ import {
   parseTransactionDate,
   validateBalanceProgression,
   extractStatementBalances,
-} from "../lib/transaction-extraction";
+} from "../lib/transaction-extraction/index.js";
 
 describe("Transaction Extraction Engine", () => {
   describe("Amount Parser", () => {

@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import { Role } from "@prisma/client";
-import { prisma } from "../../lib/db/prisma";
+import { prisma } from "../../lib/db/prisma.js";
 import {
   requireRole,
   hashPassword,
@@ -9,7 +9,7 @@ import {
   logAuditEvent,
   checkRateLimit,
   sanitizeClientErrorMessage,
-} from "../../lib/auth";
+} from "../../lib/auth/index.js";
 
 /**
  * Admin Password Reset Handler.

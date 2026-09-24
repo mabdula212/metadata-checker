@@ -2,8 +2,8 @@ import type { IncomingMessage, ServerResponse } from "http";
 import {
   runTransactionExtractionOnDocument,
   getTransactionsForDocument,
-} from "../lib/db/documents";
-import { requireDocumentOwner, logAuditEvent } from "../lib/auth";
+} from "../lib/db/documents.js";
+import { requireDocumentOwner, logAuditEvent } from "../lib/auth/index.js";
 
 /**
  * Server-side API handler for Bank Statement Transaction Extraction.

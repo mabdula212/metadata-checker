@@ -12,6 +12,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import type { TransactionExtractionResultUi } from "../types/transaction";
+import { safeApiFetch } from "../lib/api-client";
 
 interface ExcelExportCardProps {
   documentId: string;
@@ -53,7 +54,7 @@ export function ExcelExportCard({
     setErrorMessage(null);
 
     try {
-      const response = await fetch("/api/excel-export", {
+      const res = await safeApiFetch<any>("/api/excel-export", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -63,11 +64,11 @@ export function ExcelExportCard({
         }),
       });
 
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || "Failed to generate Excel export.");
+      if (!res.ok || !res.data?.success) {
+        throw new Error(res.error || res.data?.error || "Failed to generate Excel export.");
       }
+
+      const data = res.data;
 
       setExportData({
         exportId: data.exportId,

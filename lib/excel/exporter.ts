@@ -1,17 +1,17 @@
 import ExcelJS from "exceljs";
-import { prisma } from "../db/prisma";
-import { getStorageProvider, getDocumentPdf } from "../storage";
+import { prisma } from "../db/prisma.js";
+import { getStorageProvider, getDocumentPdf } from "../storage/index.js";
 import {
   defaultTransactionExtractionEngine,
   type ReviewRow,
   type ExtractionStatus,
   type BalanceReconciliationStatus,
-} from "../transaction-extraction";
+} from "../transaction-extraction/index.js";
 import type {
   BankStatementExportData,
   ExcelExportOptions,
   ExcelExportResult,
-} from "./types";
+} from "./types.js";
 import {
   EXCEL_STYLES,
   toExcelDate,
@@ -19,7 +19,7 @@ import {
   enforceMaskedAccountNumber,
   generateSafeExportFileName,
   sanitizeWorkbookText,
-} from "./formatter";
+} from "./formatter.js";
 
 /**
  * Builds the 4-sheet ExcelJS Workbook strictly complying with Bank Statement Export Engine specifications.

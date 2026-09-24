@@ -1,21 +1,21 @@
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { Role } from "@prisma/client";
-import { seedInitialUsers } from "../lib/auth/init";
+import { seedInitialUsers } from "../lib/auth/init.js";
 import {
   getStorageProvider,
   setStorageProvider,
   VercelBlobStorageProvider,
   LocalStorageProvider,
   generateStorageKey,
-} from "../lib/storage";
-import { getAuthSecret } from "../lib/auth/config";
-import { createSession } from "../lib/auth/session";
-import { requireAuth, requireDocumentOwner, requireExportOwner } from "../lib/auth/guards";
-import { sanitizeWorkbookText, generateSafeExportFileName } from "../lib/excel/formatter";
-import { validatePdfBuffer, MAX_PDF_SIZE_BYTES } from "../lib/pdf/pdf-inspector";
-import { checkDatabaseHealth } from "../lib/db/db-util";
-import { prisma } from "../lib/db/prisma";
+} from "../lib/storage/index.js";
+import { getAuthSecret } from "../lib/auth/config.js";
+import { createSession } from "../lib/auth/session.js";
+import { requireAuth, requireDocumentOwner, requireExportOwner } from "../lib/auth/guards.js";
+import { sanitizeWorkbookText, generateSafeExportFileName } from "../lib/excel/formatter.js";
+import { validatePdfBuffer, MAX_PDF_SIZE_BYTES } from "../lib/pdf/pdf-inspector.js";
+import { checkDatabaseHealth } from "../lib/db/db-util.js";
+import { prisma } from "../lib/db/prisma.js";
 
 // Mock HTTP Response for guard assertions
 function createMockResponse() {

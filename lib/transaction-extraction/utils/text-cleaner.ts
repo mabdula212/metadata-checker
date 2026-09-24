@@ -1,4 +1,4 @@
-import type { TransactionType } from "../types";
+import type { TransactionType } from "../types.js";
 
 /**
  * Normalizes unicode whitespace, non-breaking spaces, and trim artifacts.

@@ -1,5 +1,5 @@
-import { parseFinancialAmount } from "./amount-parser";
-import type { ParsedTransaction, BalanceReconciliationStatus } from "../types";
+import { parseFinancialAmount } from "./amount-parser.js";
+import type { ParsedTransaction, BalanceReconciliationStatus } from "../types.js";
 
 export interface StatementBalances {
   openingBalance: string | null;

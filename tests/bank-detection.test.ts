@@ -5,8 +5,8 @@ import {
   maskAccountNumber,
   parseIndonesianOrEnglishDate,
   extractStatementPeriod,
-} from "../lib/bank-detection";
-import type { PdfTextExtractionResult } from "../lib/pdf/pdf-text-extractor";
+} from "../lib/bank-detection/index.js";
+import type { PdfTextExtractionResult } from "../lib/pdf/pdf-text-extractor.js";
 
 function mockExtraction(text: string, pagesCount = 1): PdfTextExtractionResult {
   const chars = text.replace(/\s+/g, "").length;

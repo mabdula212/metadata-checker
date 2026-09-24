@@ -1,5 +1,5 @@
-import type { BankDetector, BankDetectionInput, BankDetectionCandidate } from "../types";
-import { extractStatementPeriod, extractAccountHolderName } from "../utils";
+import type { BankDetector, BankDetectionInput, BankDetectionCandidate } from "../types.js";
+import { extractStatementPeriod, extractAccountHolderName } from "../utils.js";
 
 export class CimbNiagaDetector implements BankDetector {
   readonly bankCode = "CIMB";

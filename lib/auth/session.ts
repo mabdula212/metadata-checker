@@ -1,8 +1,8 @@
 import crypto from "crypto";
 import type { IncomingMessage } from "http";
-import { prisma } from "../db/prisma";
-import { AUTH_COOKIE_NAME, SESSION_MAX_AGE_SECONDS } from "./config";
-import type { AuthenticatedUser, SessionInfo } from "./types";
+import { prisma } from "../db/prisma.js";
+import { AUTH_COOKIE_NAME, SESSION_MAX_AGE_SECONDS } from "./config.js";
+import type { AuthenticatedUser, SessionInfo } from "./types.js";
 
 /**
  * Parses cookies from an incoming HTTP request header.

@@ -1,12 +1,12 @@
 import crypto from "crypto";
-import { prisma } from "../db/prisma";
-import type { StorageProvider, StorageKeyInfo } from "./types";
-import { LocalStorageProvider } from "./local";
-import { VercelBlobStorageProvider } from "./vercel-blob";
+import { prisma } from "../db/prisma.js";
+import type { StorageProvider, StorageKeyInfo } from "./types.js";
+import { LocalStorageProvider } from "./local.js";
+import { VercelBlobStorageProvider } from "./vercel-blob.js";
 
-export * from "./types";
-export * from "./local";
-export * from "./vercel-blob";
+export * from "./types.js";
+export * from "./local.js";
+export * from "./vercel-blob.js";
 
 let activeStorageProvider: StorageProvider | null = null;
 

@@ -1,5 +1,5 @@
-import type { ParsedTransaction } from "./types";
-import { cleanTransactionDescription } from "./utils/text-cleaner";
+import type { ParsedTransaction } from "./types.js";
+import { cleanTransactionDescription } from "./utils/text-cleaner.js";
 
 /**
  * Suggests a human-readable category based on description and transaction type.

@@ -5,28 +5,28 @@ import type {
   BankDetectionCandidate,
   DocumentClassification,
   ConfidenceLevel,
-} from "./types";
+} from "./types.js";
 import {
   maskAccountNumber,
   extractStatementPeriod,
   extractAccountHolderName,
   detectGeneralStatementSignals,
-} from "./utils";
-import type { PdfTextExtractionResult } from "../pdf/pdf-text-extractor";
+} from "./utils.js";
+import type { PdfTextExtractionResult } from "../pdf/pdf-text-extractor.js";
 
 // Bank Detectors
-import { BcaDetector } from "./banks/bca";
-import { BriDetector } from "./banks/bri";
-import { MandiriDetector } from "./banks/mandiri";
-import { BniDetector } from "./banks/bni";
-import { CimbNiagaDetector } from "./banks/cimb-niaga";
-import { DanamonDetector } from "./banks/danamon";
-import { PermataDetector } from "./banks/permata";
-import { BankMegaDetector } from "./banks/bank-mega";
-import { BtnDetector } from "./banks/btn";
-import { OcbcDetector } from "./banks/ocbc";
-import { MaybankDetector } from "./banks/maybank";
-import { BsiDetector } from "./banks/bsi";
+import { BcaDetector } from "./banks/bca.js";
+import { BriDetector } from "./banks/bri.js";
+import { MandiriDetector } from "./banks/mandiri.js";
+import { BniDetector } from "./banks/bni.js";
+import { CimbNiagaDetector } from "./banks/cimb-niaga.js";
+import { DanamonDetector } from "./banks/danamon.js";
+import { PermataDetector } from "./banks/permata.js";
+import { BankMegaDetector } from "./banks/bank-mega.js";
+import { BtnDetector } from "./banks/btn.js";
+import { OcbcDetector } from "./banks/ocbc.js";
+import { MaybankDetector } from "./banks/maybank.js";
+import { BsiDetector } from "./banks/bsi.js";
 
 /**
  * Registry of supported bank statement detectors.

@@ -1,5 +1,5 @@
-import { prisma } from "../db/prisma";
-import { hashPassword } from "./password";
+import { prisma } from "../db/prisma.js";
+import { hashPassword } from "./password.js";
 import { Role, UserStatus } from "@prisma/client";
 
 export const DEFAULT_ADMIN_EMAIL = "admin@metadata-checker.local";

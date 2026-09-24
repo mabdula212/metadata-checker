@@ -5,7 +5,7 @@ import {
   buildClearSessionCookie,
   logAuditEvent,
   validateRequestSession,
-} from "../../lib/auth";
+} from "../../lib/auth/index.js";
 
 /**
  * API Handler for User Logout.

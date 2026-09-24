@@ -1,8 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import { Role } from "@prisma/client";
-import { validateRequestSession } from "./session";
-import type { AuthenticatedUser } from "./types";
-import { prisma } from "../db/prisma";
+import { validateRequestSession } from "./session.js";
+import type { AuthenticatedUser } from "./types.js";
+import { prisma } from "../db/prisma.js";
 
 export interface GuardAuthResult {
   user: AuthenticatedUser;
@@ -27,14 +27,9 @@ export function verifyCsrf(req: IncomingMessage): boolean {
     return true;
   }
 
-  // Check Sec-Fetch-Site if provided by modern browser
-  const secFetchSite = req.headers["sec-fetch-site"];
-  if (secFetchSite && secFetchSite === "cross-site") {
-    return false;
-  }
-
   const origin = req.headers.origin;
   const host = req.headers.host;
+  const secFetchSite = req.headers["sec-fetch-site"];
 
   if (origin && typeof origin === "string") {
     try {
@@ -42,13 +37,19 @@ export function verifyCsrf(req: IncomingMessage): boolean {
       if (host && parsedOrigin.host !== host) {
         const isLocalOrigin = parsedOrigin.hostname === "localhost" || parsedOrigin.hostname === "127.0.0.1";
         const isLocalHost = host.startsWith("localhost") || host.startsWith("127.0.0.1");
-        if (!(isLocalOrigin && isLocalHost)) {
+        const isStudioPreview =
+          (parsedOrigin.hostname.endsWith("google.com") || parsedOrigin.hostname === "google.com") &&
+          (host.endsWith(".run.app") || host.endsWith(".vercel.app"));
+
+        if (!((isLocalOrigin && isLocalHost) || isStudioPreview)) {
           return false;
         }
       }
     } catch {
       return false;
     }
+  } else if (secFetchSite && secFetchSite === "cross-site") {
+    return false;
   }
 
   return true;

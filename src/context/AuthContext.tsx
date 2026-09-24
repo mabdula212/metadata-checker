@@ -11,6 +11,7 @@ export interface UserProfile {
 interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
+  token: string | null;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
   register: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
@@ -22,16 +23,35 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [token, setToken] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem("mc_token");
+    } catch {
+      return null;
+    }
+  });
 
   const refreshSession = useCallback(async () => {
     try {
-      const res = await fetch("/api/auth/session");
+      const storedToken = localStorage.getItem("mc_token");
+      const headers: Record<string, string> = {};
+      if (storedToken) {
+        headers["Authorization"] = `Bearer ${storedToken}`;
+      }
+
+      const res = await fetch("/api/auth/session", {
+        headers,
+        credentials: "include",
+      });
+
       if (res.ok) {
         const data = await res.json();
         if (data.authenticated && data.user) {
           setUser(data.user);
         } else {
           setUser(null);
+          localStorage.removeItem("mc_token");
+          setToken(null);
         }
       } else {
         setUser(null);
@@ -52,6 +72,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, password, rememberMe }),
       });
       const contentType = res.headers.get("content-type") || "";
@@ -64,6 +85,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (res.ok && data.success && data.user) {
+        if (data.token) {
+          try {
+            localStorage.setItem("mc_token", data.token);
+          } catch {}
+          setToken(data.token);
+        }
         setUser(data.user);
         return { success: true };
       }
@@ -79,6 +106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ name, email, password }),
       });
       const contentType = res.headers.get("content-type") || "";
@@ -91,6 +119,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (res.ok && data.success && data.user) {
+        if (data.token) {
+          try {
+            localStorage.setItem("mc_token", data.token);
+          } catch {}
+          setToken(data.token);
+        }
         setUser(data.user);
         return { success: true };
       }
@@ -103,14 +137,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      const storedToken = localStorage.getItem("mc_token");
+      const headers: Record<string, string> = {};
+      if (storedToken) {
+        headers["Authorization"] = `Bearer ${storedToken}`;
+      }
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers,
+        credentials: "include",
+      });
     } finally {
+      try {
+        localStorage.removeItem("mc_token");
+      } catch {}
+      setToken(null);
       setUser(null);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshSession }}>
+    <AuthContext.Provider value={{ user, loading, token, login, register, logout, refreshSession }}>
       {children}
     </AuthContext.Provider>
   );

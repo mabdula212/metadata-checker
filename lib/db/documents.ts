@@ -1,14 +1,14 @@
-import { prisma } from "./prisma";
-import type { ExtractedPdfMetadata } from "../pdf/pdf-inspector";
-import { extractPdfText } from "../pdf/pdf-text-extractor";
-import { defaultBankDetectionEngine, type BankDetectionResult } from "../bank-detection";
+import { prisma } from "./prisma.js";
+import type { ExtractedPdfMetadata } from "../pdf/pdf-inspector.js";
+import { extractPdfText } from "../pdf/pdf-text-extractor.js";
+import { defaultBankDetectionEngine, type BankDetectionResult } from "../bank-detection/index.js";
 import {
   defaultTransactionExtractionEngine,
   type ParsedTransaction,
   type ReviewRow,
   type TransactionExtractionValidation,
   type ExtractionStatus,
-} from "../transaction-extraction";
+} from "../transaction-extraction/index.js";
 import crypto from "crypto";
 import { Prisma, type DocumentType } from "@prisma/client";
 import {
@@ -16,7 +16,7 @@ import {
   generateStorageKey,
   getDocumentPdf,
   isPdfBuffer,
-} from "../storage";
+} from "../storage/index.js";
 
 export { getDocumentPdf };
 

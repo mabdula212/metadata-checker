@@ -1,4 +1,4 @@
-import type { ExtractedPdfPage } from "../pdf/pdf-text-extractor";
+import type { ExtractedPdfPage } from "../pdf/pdf-text-extractor.js";
 
 export type ConfidenceLevel = "LOW" | "MEDIUM" | "HIGH";
 

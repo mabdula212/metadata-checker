@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { validateRequestSession } from "../../lib/auth";
+import { validateRequestSession } from "../../lib/auth/index.js";
 
 /**
  * API Handler for Current Session Inspection.

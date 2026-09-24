@@ -9,7 +9,7 @@ import type {
   ExtractionStatus,
   BalanceReconciliationStatus,
   ReviewRow,
-} from "../transaction-extraction/types";
+} from "../transaction-extraction/types.js";
 
 export interface ExcelExportOptions {
   documentId: string;
