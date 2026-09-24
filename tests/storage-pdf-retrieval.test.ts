@@ -401,7 +401,7 @@ describe("Persistent PDF Storage & Retrieval Engine — Vercel Blob & Local Prov
     });
 
     assert.equal(result.document.originalFileName, "blob_inspected_statement.pdf");
-    assert.equal(result.document.status, "READY");
+    assert.equal(result.document.status, "COMPLETED");
     assert.ok(result.document.storageKey.startsWith("documents/"));
 
     // Verify it was stored in Blob store and not local disk
@@ -423,10 +423,10 @@ describe("Persistent PDF Storage & Retrieval Engine — Vercel Blob & Local Prov
 
     // Execute bank detection workflow
     const detectionResult = await runBankDetectionOnDocument(doc.id);
-    assert.equal(detectionResult.documentType, "BANK_STATEMENT");
-    assert.equal(detectionResult.bankCode, "BCA");
-    assert.equal(detectionResult.accountNumberMasked, "******7890");
-    assert.equal(detectionResult.confidence, "HIGH");
+    assert.equal(detectionResult.document.documentType, "BANK_STATEMENT");
+    assert.equal(detectionResult.detection.bankCode, "BCA");
+    assert.equal(detectionResult.detection.accountNumberMasked, "******7890");
+    assert.equal(detectionResult.detection.confidence, "HIGH");
   });
 
   it("11. transaction extraction using Blob", async () => {
