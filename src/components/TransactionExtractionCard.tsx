@@ -20,6 +20,7 @@ import type {
   ReviewRowUi,
   TransactionType,
 } from "../types/transaction";
+import { TransactionSummaryChart } from "./TransactionSummaryChart";
 
 interface TransactionExtractionCardProps {
   extraction: TransactionExtractionResultUi | null;
@@ -267,6 +268,9 @@ export function TransactionExtractionCard({
               </div>
             </div>
           )}
+
+          {/* Summary Chart: Credit vs. Debit Distributions (Recharts) */}
+          <TransactionSummaryChart transactions={transactions} summary={summary} />
 
           {/* Needs Review Section banner if any rows require manual inspection */}
           {reviewRows.length > 0 && (
