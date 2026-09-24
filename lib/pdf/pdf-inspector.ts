@@ -25,16 +25,53 @@ export interface PdfValidationResult {
 }
 
 /**
- * Validates the raw buffer of an uploaded PDF.
+ * Creates an independent, isolated Uint8Array copy from any Buffer, Uint8Array, or ArrayBuffer.
+ * Allocates a pristine ArrayBuffer slice so downstream operations (pdf-lib, unpdf, crypto, fetch)
+ * can never transfer, detach, or mutate the original buffer.
+ */
+export function createStableByteCopy(input: Buffer | Uint8Array | ArrayBuffer): Uint8Array {
+  if (!input) {
+    return new Uint8Array(0);
+  }
+  if (input instanceof ArrayBuffer) {
+    if ((input as unknown as { detached?: boolean }).detached) {
+      throw new Error("Cannot create byte copy from a detached ArrayBuffer.");
+    }
+    return new Uint8Array(input.slice(0));
+  }
+  if (ArrayBuffer.isView(input)) {
+    if ((input.buffer as unknown as { detached?: boolean }).detached) {
+      throw new Error("Cannot create byte copy from a detached ArrayBuffer.");
+    }
+    // Allocate fresh ArrayBuffer slice matching exact byte range
+    const clonedArrayBuffer = input.buffer.slice(
+      input.byteOffset,
+      input.byteOffset + input.byteLength
+    );
+    return new Uint8Array(clonedArrayBuffer);
+  }
+  throw new Error("Invalid input: expected Buffer, Uint8Array, or ArrayBuffer.");
+}
+
+/**
+ * Creates an independent Node.js Buffer copy backed by a dedicated, non-shared ArrayBuffer.
+ */
+export function createStableBufferCopy(input: Buffer | Uint8Array | ArrayBuffer): Buffer {
+  const bytes = createStableByteCopy(input);
+  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+}
+
+/**
+ * Validates the raw buffer or byte array of an uploaded PDF.
  * Checks minimum length, maximum size (20MB), and the %PDF- magic signature.
  */
-export function validatePdfBuffer(buffer: Buffer): PdfValidationResult {
-  if (!buffer || buffer.length === 0) {
+export function validatePdfBuffer(input: Buffer | Uint8Array): PdfValidationResult {
+  if (!input || input.length === 0) {
     return { valid: false, error: "The provided file is empty (0 bytes)." };
   }
 
-  if (buffer.length > MAX_PDF_SIZE_BYTES) {
-    const sizeMb = (buffer.length / (1024 * 1024)).toFixed(2);
+  if (input.length > MAX_PDF_SIZE_BYTES) {
+    const sizeMb = (input.length / (1024 * 1024)).toFixed(2);
     return {
       valid: false,
       error: `File size (${sizeMb} MB) exceeds the maximum allowed limit of 20 MB.`,
@@ -42,8 +79,13 @@ export function validatePdfBuffer(buffer: Buffer): PdfValidationResult {
   }
 
   // Check PDF signature in the first 1024 bytes (some PDFs have UTF-8 BOM or leading comment)
-  const headerSnippet = buffer.subarray(0, Math.min(buffer.length, 1024)).toString("ascii");
-  if (!headerSnippet.includes(PDF_MAGIC_BYTES)) {
+  const headerSlice = input.subarray(0, Math.min(input.length, 1024));
+  let headerText = "";
+  for (let i = 0; i < headerSlice.length; i++) {
+    headerText += String.fromCharCode(headerSlice[i]);
+  }
+
+  if (!headerText.includes(PDF_MAGIC_BYTES)) {
     return {
       valid: false,
       error: "Invalid file signature: The file is not a valid PDF (missing %PDF- header).",
@@ -54,18 +96,24 @@ export function validatePdfBuffer(buffer: Buffer): PdfValidationResult {
 }
 
 /**
- * Calculates SHA-256 cryptographic checksum of a buffer.
+ * Calculates SHA-256 cryptographic checksum of a buffer or byte array.
+ * Uses an independent byte copy so hashing never transfers or detaches downstream buffers.
  */
-export function calculateFileHash(buffer: Buffer): string {
-  return crypto.createHash("sha256").update(buffer).digest("hex");
+export function calculateFileHash(input: Buffer | Uint8Array): string {
+  const stableBytes = createStableByteCopy(input);
+  return crypto.createHash("sha256").update(stableBytes).digest("hex");
 }
 
 /**
  * Extracts PDF version from header bytes (e.g. 1.4, 1.7, 2.0).
  */
-export function extractPdfVersion(buffer: Buffer): string | null {
-  const headerSnippet = buffer.subarray(0, Math.min(buffer.length, 1024)).toString("ascii");
-  const match = headerSnippet.match(/%PDF-(\d+\.\d+)/);
+export function extractPdfVersion(input: Buffer | Uint8Array): string | null {
+  const headerSlice = input.subarray(0, Math.min(input.length, 1024));
+  let headerText = "";
+  for (let i = 0; i < headerSlice.length; i++) {
+    headerText += String.fromCharCode(headerSlice[i]);
+  }
+  const match = headerText.match(/%PDF-(\d+\.\d+)/);
   return match ? match[1] : null;
 }
 
@@ -110,8 +158,17 @@ function parsePdfDate(val: unknown): Date | null {
 /**
  * Estimates page count directly from raw PDF objects as an emergency fallback
  */
-function countPagesFromRawBuffer(buffer: Buffer): number {
-  const text = buffer.toString("binary");
+function countPagesFromRawBytes(input: Uint8Array): number {
+  let text = "";
+  // Decode in chunks to avoid call stack limits on large buffers
+  const chunkSize = 8192;
+  for (let i = 0; i < input.length; i += chunkSize) {
+    const slice = input.subarray(i, Math.min(i + chunkSize, input.length));
+    for (let j = 0; j < slice.length; j++) {
+      text += String.fromCharCode(slice[j]);
+    }
+  }
+
   // Look for /Type /Page (excluding /Pages)
   const matches = text.match(/\/Type\s*\/Page\b(?!\s*s)/g);
   if (matches && matches.length > 0) {
@@ -133,18 +190,31 @@ function countPagesFromRawBuffer(buffer: Buffer): number {
 /**
  * Parses the PDF document and extracts all standard metadata attributes,
  * page count, version, and raw dictionary values.
- * Uses a resilient multi-tier engine (unpdf / PDF.js + pdf-lib + raw stream scanner)
- * to eliminate "Expected instance of PDFDict" and corrupted catalog errors.
+ *
+ * Architecture:
+ * 1. Creates a stable, independent byte representation immediately.
+ * 2. Validates PDF magic bytes (%PDF-).
+ * 3. Computes SHA-256 using an isolated byte copy.
+ * 4. Inspects PDF via pdf-lib using an independent Uint8Array copy.
+ * 5. Uses unpdf with an isolated byte copy if enrichment/fallback is needed.
+ * 6. Guarantees that neither caller nor downstream operations encounter a detached ArrayBuffer.
  */
-export async function inspectPdfMetadata(buffer: Buffer): Promise<ExtractedPdfMetadata> {
-  const validation = validatePdfBuffer(buffer);
+export async function inspectPdfMetadata(input: Buffer | Uint8Array): Promise<ExtractedPdfMetadata> {
+  // 1. Create stable independent byte copy
+  const stableBytes = createStableByteCopy(input);
+
+  // 2. Validate PDF magic bytes
+  const validation = validatePdfBuffer(stableBytes);
   if (!validation.valid) {
     throw new Error(validation.error || "PDF validation failed.");
   }
+  console.log("[PDF_INSPECT] PDF magic validated");
 
-  const fileHash = calculateFileHash(buffer);
-  let pdfVersion = extractPdfVersion(buffer);
+  // 3. Calculate SHA-256 checksum from an independent copy
+  const fileHash = calculateFileHash(stableBytes);
+  console.log("[PDF_INSPECT] SHA-256 calculated");
 
+  let pdfVersion = extractPdfVersion(stableBytes);
   let pageCount = 0;
   let rawTitle: string | null = null;
   let rawAuthor: string | null = null;
@@ -155,63 +225,72 @@ export async function inspectPdfMetadata(buffer: Buffer): Promise<ExtractedPdfMe
   let rawModDate: Date | null = null;
   let unpdfMetaInfo: Record<string, unknown> | null = null;
 
-  // Tier 1: Modern PDF.js via unpdf (Handles broken, non-standard, and banking statement catalogs)
+  // 4. pdf-lib inspection using a dedicated independent copy
+  console.log("[PDF_INSPECT] pdf-lib inspection started");
   try {
-    const uint8Array = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-    const pdf = await getDocumentProxy(uint8Array);
-    if (pdf && typeof pdf.numPages === "number" && pdf.numPages > 0) {
-      pageCount = pdf.numPages;
+    const pdfBytes = createStableByteCopy(stableBytes);
+    const pdfDoc = await PDFDocument.load(pdfBytes, {
+      ignoreEncryption: true,
+      updateMetadata: false,
+    });
+
+    try {
+      const docPages = pdfDoc.getPageCount();
+      if (docPages > 0) pageCount = docPages;
+    } catch {
+      // Page catalog parsing error, fallback will attempt recovery
     }
-    const meta = await getMeta(pdf).catch(() => null);
-    if (meta && meta.info) {
-      unpdfMetaInfo = meta.info as Record<string, unknown>;
-      rawTitle = cleanMetadataString(unpdfMetaInfo.Title);
-      rawAuthor = cleanMetadataString(unpdfMetaInfo.Author);
-      rawSubject = cleanMetadataString(unpdfMetaInfo.Subject);
-      rawCreator = cleanMetadataString(unpdfMetaInfo.Creator);
-      rawProducer = cleanMetadataString(unpdfMetaInfo.Producer);
-      rawCreationDate = parsePdfDate(unpdfMetaInfo.CreationDate);
-      rawModDate = parsePdfDate(unpdfMetaInfo.ModDate);
-      if (!pdfVersion && unpdfMetaInfo.PDFFormatVersion) {
-        pdfVersion = String(unpdfMetaInfo.PDFFormatVersion);
-      }
-    }
-  } catch (unpdfErr: unknown) {
-    console.warn("[PDF_INSPECTOR] unpdf parse warning:", unpdfErr);
+
+    rawTitle = cleanMetadataString(pdfDoc.getTitle());
+    rawAuthor = cleanMetadataString(pdfDoc.getAuthor());
+    rawSubject = cleanMetadataString(pdfDoc.getSubject());
+    rawCreator = cleanMetadataString(pdfDoc.getCreator());
+    rawProducer = cleanMetadataString(pdfDoc.getProducer());
+    rawCreationDate = pdfDoc.getCreationDate() ?? null;
+    rawModDate = pdfDoc.getModificationDate() ?? null;
+
+    console.log("[PDF_INSPECT] pdf-lib inspection completed");
+  } catch (pdfLibErr: unknown) {
+    console.warn(
+      "[PDF_INSPECT] pdf-lib inspection non-fatal warning:",
+      pdfLibErr instanceof Error ? pdfLibErr.message : "Parsing issue"
+    );
   }
 
-  // Tier 2: pdf-lib (Enrichment / Secondary fallback, guarded against PDFDict failures)
+  // 5. Fallback Tier: Modern unpdf / PDF.js (for non-standard catalogs)
+  // CRITICAL: Always allocate an independent copy so unpdf/PDF.js cannot detach stableBytes!
   if (pageCount <= 0 || !rawTitle || !rawAuthor) {
     try {
-      const pdfDoc = await PDFDocument.load(buffer, {
-        ignoreEncryption: true,
-        updateMetadata: false,
-      });
-
-      if (pageCount <= 0) {
-        try {
-          const docPages = pdfDoc.getPageCount();
-          if (docPages > 0) pageCount = docPages;
-        } catch {
-          // Ignore pdf-lib page catalog crash
+      const unpdfBytes = createStableByteCopy(stableBytes);
+      const pdf = await getDocumentProxy(unpdfBytes);
+      if (pdf && typeof pdf.numPages === "number" && pdf.numPages > 0) {
+        if (pageCount <= 0) pageCount = pdf.numPages;
+      }
+      const meta = await getMeta(pdf).catch(() => null);
+      if (meta && meta.info) {
+        unpdfMetaInfo = meta.info as Record<string, unknown>;
+        rawTitle = rawTitle || cleanMetadataString(unpdfMetaInfo.Title);
+        rawAuthor = rawAuthor || cleanMetadataString(unpdfMetaInfo.Author);
+        rawSubject = rawSubject || cleanMetadataString(unpdfMetaInfo.Subject);
+        rawCreator = cleanMetadataString(unpdfMetaInfo.Creator);
+        rawProducer = cleanMetadataString(unpdfMetaInfo.Producer);
+        rawCreationDate = rawCreationDate || parsePdfDate(unpdfMetaInfo.CreationDate);
+        rawModDate = rawModDate || parsePdfDate(unpdfMetaInfo.ModDate);
+        if (!pdfVersion && unpdfMetaInfo.PDFFormatVersion) {
+          pdfVersion = String(unpdfMetaInfo.PDFFormatVersion);
         }
       }
-
-      rawTitle = rawTitle || cleanMetadataString(pdfDoc.getTitle());
-      rawAuthor = rawAuthor || cleanMetadataString(pdfDoc.getAuthor());
-      rawSubject = rawSubject || cleanMetadataString(pdfDoc.getSubject());
-      rawCreator = rawCreator || cleanMetadataString(pdfDoc.getCreator());
-      rawProducer = rawProducer || cleanMetadataString(pdfDoc.getProducer());
-      rawCreationDate = rawCreationDate || pdfDoc.getCreationDate() || null;
-      rawModDate = rawModDate || pdfDoc.getModificationDate() || null;
-    } catch {
-      // Ignore pdf-lib error gracefully
+    } catch (unpdfErr: unknown) {
+      console.warn(
+        "[PDF_INSPECT] unpdf fallback warning:",
+        unpdfErr instanceof Error ? unpdfErr.message : "unpdf error"
+      );
     }
   }
 
-  // Tier 3: Raw Buffer Page Counter Fallback
+  // 6. Fallback Tier: Raw Buffer Page Counter Fallback
   if (pageCount <= 0) {
-    pageCount = countPagesFromRawBuffer(buffer);
+    pageCount = countPagesFromRawBytes(stableBytes);
   }
 
   // Minimum sanity check
@@ -230,7 +309,7 @@ export async function inspectPdfMetadata(buffer: Buffer): Promise<ExtractedPdfMe
     modificationDate: rawModDate ? rawModDate.toISOString() : null,
     pdfVersion,
     pageCount,
-    fileSizeBytes: buffer.length,
+    fileSizeBytes: stableBytes.length,
     fileHash,
     extraInfo: unpdfMetaInfo ?? undefined,
   };

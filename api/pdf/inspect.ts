@@ -1,24 +1,50 @@
 import type { IncomingMessage, ServerResponse } from "http";
+import { Readable } from "stream";
 import Busboy from "busboy";
-import { inspectPdfMetadata, MAX_PDF_SIZE_BYTES } from "../../lib/pdf/pdf-inspector.js";
+import {
+  inspectPdfMetadata,
+  createStableByteCopy,
+  createStableBufferCopy,
+  MAX_PDF_SIZE_BYTES,
+} from "../../lib/pdf/pdf-inspector.js";
 import { processAndSaveDocument } from "../../lib/db/documents.js";
 import { requireAuth, logAuditEvent } from "../../lib/auth/index.js";
 import { assertStorageConfigured } from "../../lib/storage/index.js";
 
 interface ParsedUpload {
   fileName: string;
+  bytes: Uint8Array;
   buffer: Buffer;
 }
 
 /**
  * Parses an incoming HTTP request for uploaded PDF data.
- * Supports multipart/form-data, application/json (base64), and raw binary streams.
+ * Supports web request.formData(), Node multipart/form-data, and application/json (base64).
+ * Creates a stable, independent byte representation immediately upon receiving file bytes.
  */
-function parseRequestPayload(req: IncomingMessage): Promise<ParsedUpload> {
+async function parseRequestPayload(req: IncomingMessage): Promise<ParsedUpload> {
+  // Case A: Web Standard Request or framework with req.formData()
+  if (typeof (req as unknown as { formData?: () => Promise<FormData> }).formData === "function") {
+    try {
+      const formData = await (req as unknown as { formData: () => Promise<FormData> }).formData();
+      const fileItem = formData.get("file") || formData.get("pdf") || formData.get("document");
+      if (fileItem && typeof (fileItem as Blob).arrayBuffer === "function") {
+        const file = fileItem as File;
+        const sourceArrayBuffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(sourceArrayBuffer.slice(0));
+        const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const fileName = (file as { name?: string }).name || "document.pdf";
+        return { fileName, bytes, buffer };
+      }
+    } catch {
+      // Fall through to streaming / busboy parsing
+    }
+  }
+
   return new Promise((resolve, reject) => {
     const contentType = req.headers["content-type"] || "";
 
-    // 1. Handle multipart/form-data
+    // Case B: Handle multipart/form-data
     if (contentType.includes("multipart/form-data")) {
       const busboy = Busboy({
         headers: req.headers,
@@ -28,7 +54,6 @@ function parseRequestPayload(req: IncomingMessage): Promise<ParsedUpload> {
         },
       });
 
-      let fileBuffer: Buffer | null = null;
       let originalFileName = "document.pdf";
       const chunks: Buffer[] = [];
       let limitExceeded = false;
@@ -45,7 +70,7 @@ function parseRequestPayload(req: IncomingMessage): Promise<ParsedUpload> {
         });
 
         file.on("end", () => {
-          fileBuffer = Buffer.concat(chunks);
+          // File chunks collected
         });
       });
 
@@ -53,10 +78,28 @@ function parseRequestPayload(req: IncomingMessage): Promise<ParsedUpload> {
         if (limitExceeded) {
           return reject(new Error("File size exceeds 20 MB limit."));
         }
-        if (!fileBuffer || fileBuffer.length === 0) {
+        if (chunks.length === 0) {
           return reject(new Error("No file was uploaded or the uploaded file is empty."));
         }
-        resolve({ fileName: originalFileName, buffer: fileBuffer });
+        const totalLength = chunks.reduce((acc, c) => acc + c.length, 0);
+        if (totalLength === 0) {
+          return reject(new Error("No file was uploaded or the uploaded file is empty."));
+        }
+
+        // Allocate a dedicated, non-shared ArrayBuffer slice
+        const stableArrayBuffer = new ArrayBuffer(totalLength);
+        const stableBytes = new Uint8Array(stableArrayBuffer);
+        let offset = 0;
+        for (const chunk of chunks) {
+          stableBytes.set(
+            new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength),
+            offset
+          );
+          offset += chunk.byteLength;
+        }
+
+        const stableBuffer = Buffer.from(stableArrayBuffer);
+        resolve({ fileName: originalFileName, bytes: stableBytes, buffer: stableBuffer });
       });
 
       busboy.on("error", (err: unknown) => {
@@ -64,11 +107,25 @@ function parseRequestPayload(req: IncomingMessage): Promise<ParsedUpload> {
         reject(new Error(`Failed to parse file upload: ${msg}`));
       });
 
+      // Handle Vercel serverless pre-buffered req.body if stream was already consumed
+      const reqWithBody = req as unknown as { body?: unknown; readableEnded?: boolean };
+      if (reqWithBody.body && reqWithBody.readableEnded) {
+        const bodyBuf = Buffer.isBuffer(reqWithBody.body)
+          ? reqWithBody.body
+          : typeof reqWithBody.body === "string"
+          ? Buffer.from(reqWithBody.body)
+          : null;
+        if (bodyBuf) {
+          Readable.from(bodyBuf).pipe(busboy);
+          return;
+        }
+      }
+
       req.pipe(busboy);
       return;
     }
 
-    // 2. Handle application/json with Base64 payload
+    // Case C: Handle application/json with Base64 payload
     if (contentType.includes("application/json")) {
       const chunks: Buffer[] = [];
       let totalLength = 0;
@@ -89,9 +146,11 @@ function parseRequestPayload(req: IncomingMessage): Promise<ParsedUpload> {
             return reject(new Error("Missing fileBase64 in JSON request body."));
           }
           const base64Data = data.fileBase64.replace(/^data:[^;]+;base64,/, "");
-          const fileBuffer = Buffer.from(base64Data, "base64");
+          const rawBuffer = Buffer.from(base64Data, "base64");
+          const stableBytes = createStableByteCopy(rawBuffer);
+          const stableBuffer = createStableBufferCopy(stableBytes);
           const fileName = data.fileName || "document.pdf";
-          resolve({ fileName, buffer: fileBuffer });
+          resolve({ fileName, bytes: stableBytes, buffer: stableBuffer });
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : "Invalid JSON";
           reject(new Error(`Failed to parse JSON body: ${msg}`));
@@ -105,7 +164,7 @@ function parseRequestPayload(req: IncomingMessage): Promise<ParsedUpload> {
       return;
     }
 
-    // 3. Reject unsupported content types
+    // Case D: Reject unsupported content types
     reject(new Error(`Unsupported content type: ${contentType}. Please upload as multipart/form-data.`));
   });
 }
@@ -146,11 +205,16 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   }
 
   try {
+    console.log("[PDF_INSPECT] request received");
+
     // 1. Parse and extract uploaded file
-    const { fileName, buffer } = await parseRequestPayload(req);
+    const { fileName, buffer, bytes } = await parseRequestPayload(req);
+    console.log("[PDF_INSPECT] file bytes loaded");
+    console.log("[PDF_INSPECT] stable byte copy created");
 
     // 2. Perform server-side metadata inspection and validation
-    const extractedMetadata = await inspectPdfMetadata(buffer);
+    // Uses stable independent byte representation (validates magic bytes, sha256, pdf-lib)
+    const extractedMetadata = await inspectPdfMetadata(bytes || buffer);
 
     // 3. Process and persist document + metadata + processing job under authenticated user
     const result = await processAndSaveDocument({

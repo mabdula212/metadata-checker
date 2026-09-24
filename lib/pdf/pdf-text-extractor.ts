@@ -1,4 +1,5 @@
 import { extractText, getDocumentProxy } from "unpdf";
+import { createStableByteCopy } from "./pdf-inspector.js";
 
 export interface ExtractedPdfPage {
   pageNumber: number;
@@ -23,11 +24,8 @@ export async function extractPdfText(
   pdfBuffer: Buffer | Uint8Array
 ): Promise<PdfTextExtractionResult> {
   try {
-    const uint8Array = Buffer.isBuffer(pdfBuffer)
-      ? new Uint8Array(pdfBuffer.buffer.slice(pdfBuffer.byteOffset, pdfBuffer.byteOffset + pdfBuffer.byteLength))
-      : pdfBuffer instanceof Uint8Array
-      ? pdfBuffer
-      : new Uint8Array(pdfBuffer);
+    // Always create an isolated, dedicated Uint8Array copy so unpdf cannot detach caller's buffer
+    const uint8Array = createStableByteCopy(pdfBuffer);
 
     // Load PDF document using unpdf (pure JS, safe in Node & serverless runtimes)
     const pdf = await getDocumentProxy(uint8Array);

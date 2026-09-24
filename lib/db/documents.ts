@@ -1,5 +1,5 @@
 import { prisma } from "./prisma.js";
-import type { ExtractedPdfMetadata } from "../pdf/pdf-inspector.js";
+import { type ExtractedPdfMetadata, createStableBufferCopy } from "../pdf/pdf-inspector.js";
 import { extractPdfText } from "../pdf/pdf-text-extractor.js";
 import { defaultBankDetectionEngine, type BankDetectionResult } from "../bank-detection/index.js";
 import {
@@ -30,12 +30,15 @@ const documentBufferCache = new Map<string, Buffer>();
  * Saves a document's binary buffer into the active StorageProvider and cache.
  */
 export function persistBuffer(documentId: string, storageKey: string, buffer: Buffer): void {
-  documentBufferCache.set(documentId, buffer);
-  documentBufferCache.set(storageKey, buffer);
+  const stable = createStableBufferCopy(buffer);
+  documentBufferCache.set(documentId, stable);
+  documentBufferCache.set(storageKey, stable);
 
   try {
     const provider = getStorageProvider();
-    provider.upload(storageKey, buffer, { contentType: "application/pdf" }).catch(() => null);
+    provider
+      .upload(storageKey, createStableBufferCopy(stable), { contentType: "application/pdf" })
+      .catch(() => null);
   } catch {
     // ignore in background cache update
   }
@@ -148,6 +151,7 @@ export async function processAndSaveDocument(
 ): Promise<SaveDocumentResult> {
   const { originalFileName, fileSize, extractedMetadata } = options;
   const { fileHash } = extractedMetadata;
+  const stableBuffer = createStableBufferCopy(options.buffer);
 
   // 1. Check for duplicates using SHA-256
   const existing = await findDuplicateDocument(fileHash);
@@ -156,13 +160,14 @@ export async function processAndSaveDocument(
     const exists = await provider.exists(existing.document.storageKey).catch(() => false);
     if (!exists) {
       await provider
-        .upload(existing.document.storageKey, options.buffer, {
+        .upload(existing.document.storageKey, createStableBufferCopy(stableBuffer), {
           contentType: "application/pdf",
         })
         .catch(() => null);
     }
-    documentBufferCache.set(existing.document.id, options.buffer);
-    documentBufferCache.set(existing.document.storageKey, options.buffer);
+    const duplicateCopy = createStableBufferCopy(stableBuffer);
+    documentBufferCache.set(existing.document.id, duplicateCopy);
+    documentBufferCache.set(existing.document.storageKey, duplicateCopy);
 
     return {
       isDuplicate: true,
@@ -185,13 +190,15 @@ export async function processAndSaveDocument(
   // 4. Upload PDF to StorageProvider before database insertion
   assertStorageConfigured();
   const provider = getStorageProvider();
-  await provider.upload(storageKey, options.buffer, {
+  await provider.upload(storageKey, createStableBufferCopy(stableBuffer), {
     contentType: "application/pdf",
   });
+  console.log("[PDF_INSPECT] storage completed");
 
   // Keep cache populated for fast immediate access
-  documentBufferCache.set(documentId, options.buffer);
-  documentBufferCache.set(storageKey, options.buffer);
+  const cachedCopy = createStableBufferCopy(stableBuffer);
+  documentBufferCache.set(documentId, cachedCopy);
+  documentBufferCache.set(storageKey, cachedCopy);
 
   // 5. Create Document record with initial UPLOADED status
   const document = await prisma.document.create({
@@ -235,6 +242,7 @@ export async function processAndSaveDocument(
         rawMetadataJson: extractedMetadata.rawMetadataJson as Prisma.InputJsonValue,
       },
     });
+    console.log("[PDF_INSPECT] metadata persisted");
 
     // 7. Update Document status to COMPLETED
     const updatedDocument = await prisma.document.update({

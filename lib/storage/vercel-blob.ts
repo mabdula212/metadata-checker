@@ -35,7 +35,11 @@ export class VercelBlobStorageProvider implements StorageProvider {
     const cleanKey = key.replace(/\\/g, "/").replace(/^\/+/, "");
     const contentType = options?.contentType || "application/pdf";
 
-    // Vercel Blob REST API upload
+    // Vercel Blob REST API upload using an independent byte slice
+    const uploadBuffer = Buffer.from(
+      buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+    );
+
     const response = await fetch(`https://blob.vercel.com/${cleanKey}`, {
       method: "PUT",
       headers: {
@@ -43,7 +47,7 @@ export class VercelBlobStorageProvider implements StorageProvider {
         "x-content-type": contentType,
         "x-add-random-suffix": "false",
       },
-      body: new Uint8Array(buffer),
+      body: uploadBuffer as unknown as BodyInit,
     });
 
     if (!response.ok) {
