@@ -582,6 +582,7 @@ export async function exportBankStatementToExcel(
   }
 
   // 6. Generate XLSX Workbook
+  console.log("[EXCEL_EXPORT] workbook generation started");
   const workbook = await generateBankStatementWorkbook({
     document,
     metadata: document.metadata,
@@ -594,6 +595,7 @@ export async function exportBankStatementToExcel(
 
   const bufferArray = await workbook.xlsx.writeBuffer();
   const buffer = Buffer.from(bufferArray);
+  console.log("[EXCEL_EXPORT] workbook generation completed");
 
   // 7. Generate Safe Filename and Storage Key
   const safeFileName = generateSafeExportFileName(
@@ -606,11 +608,13 @@ export async function exportBankStatementToExcel(
   const storageKey = `exports/${document.id}/${safeFileName}`;
 
   // 8. Upload to StorageProvider
+  console.log("[EXCEL_EXPORT] storage upload started");
   const provider = getStorageProvider();
   await provider.upload(storageKey, buffer, {
     contentType:
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
+  console.log("[EXCEL_EXPORT] storage upload completed");
 
   // 9. Persist Export database record
   const exportRecord = await prisma.export.create({

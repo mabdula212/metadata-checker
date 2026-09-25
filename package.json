@@ -19,6 +19,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@types/bcryptjs": "^3.0.0",
     "@types/pdf-parse": "^1.1.5",
+    "@vercel/blob": "^2.8.0",
     "@vitejs/plugin-react": "^6.1.1",
     "bcryptjs": "^3.0.3",
     "busboy": "^1.6.0",

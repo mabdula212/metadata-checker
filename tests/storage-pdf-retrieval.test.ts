@@ -5,6 +5,7 @@ import path from "path";
 import crypto from "crypto";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { Role } from "@prisma/client";
+import { BlobNotFoundError } from "@vercel/blob";
 import {
   LocalStorageProvider,
   VercelBlobStorageProvider,
@@ -16,6 +17,9 @@ import {
   resolveStorageProviderName,
   validateStorageConfiguration,
   assertStorageConfigured,
+  setGlobalMockBlobClient,
+  categorizeBlobError,
+  getStorageDiagnostic,
 } from "../lib/storage/index.js";
 import { prisma } from "../lib/db/prisma.js";
 import { defaultBankDetectionEngine } from "../lib/bank-detection/index.js";
@@ -70,6 +74,77 @@ describe("Persistent PDF Storage & Retrieval Engine — Vercel Blob & Local Prov
       fs.mkdirSync(TEST_STORAGE_DIR, { recursive: true });
     }
     localTestProvider = new LocalStorageProvider(TEST_STORAGE_DIR);
+
+    // Register official @vercel/blob SDK mock client
+    setGlobalMockBlobClient({
+      put: async (pathname, body, options) => {
+        let buf: Buffer;
+        if (Buffer.isBuffer(body)) buf = body;
+        else if (body instanceof Uint8Array) buf = Buffer.from(body);
+        else if (typeof body === "string") buf = Buffer.from(body);
+        else buf = Buffer.alloc(0);
+
+        const contentType = options?.contentType || "application/pdf";
+        blobMockStore.set(pathname, { buffer: buf, contentType });
+        return {
+          url: `https://teststore.private.blob.vercel-storage.com/${pathname}`,
+          downloadUrl: `https://teststore.private.blob.vercel-storage.com/${pathname}?download=1`,
+          pathname,
+          contentType,
+          contentDisposition: "inline",
+        };
+      },
+      get: async (pathname) => {
+        const item = blobMockStore.get(pathname);
+        if (!item) return null;
+        const stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(new Uint8Array(item.buffer));
+            controller.close();
+          },
+        });
+        return {
+          statusCode: 200,
+          stream,
+          headers: new Headers() as any,
+          blob: {
+            url: `https://teststore.private.blob.vercel-storage.com/${pathname}`,
+            downloadUrl: `https://teststore.private.blob.vercel-storage.com/${pathname}?download=1`,
+            pathname,
+            contentType: item.contentType,
+            contentDisposition: "inline",
+            cacheControl: "no-cache",
+            uploadedAt: new Date(),
+            etag: "test-etag",
+            size: item.buffer.length,
+          },
+        };
+      },
+      head: async (pathname) => {
+        const item = blobMockStore.get(pathname);
+        if (!item) {
+          throw new BlobNotFoundError();
+        }
+        return {
+          url: `https://teststore.private.blob.vercel-storage.com/${pathname}`,
+          downloadUrl: `https://teststore.private.blob.vercel-storage.com/${pathname}?download=1`,
+          pathname,
+          contentType: item.contentType,
+          contentDisposition: "inline",
+          cacheControl: "no-cache",
+          uploadedAt: new Date(),
+          etag: "test-etag",
+          size: item.buffer.length,
+        };
+      },
+      del: async (pathname) => {
+        if (Array.isArray(pathname)) {
+          pathname.forEach((p) => blobMockStore.delete(p));
+        } else {
+          blobMockStore.delete(pathname);
+        }
+      },
+    });
 
     // Mock fetch for Vercel Blob REST endpoints
     const originalFetch = globalThis.fetch;
@@ -152,6 +227,7 @@ describe("Persistent PDF Storage & Retrieval Engine — Vercel Blob & Local Prov
 
   after(async () => {
     setStorageProvider(null);
+    setGlobalMockBlobClient(null);
     if (restoreFetch) restoreFetch();
     if (fs.existsSync(TEST_STORAGE_DIR)) {
       fs.rmSync(TEST_STORAGE_DIR, { recursive: true, force: true });
@@ -562,5 +638,127 @@ describe("Persistent PDF Storage & Retrieval Engine — Vercel Blob & Local Prov
       },
       { message: /Document not found/ }
     );
+  });
+
+  it("18. categorizes Blob errors accurately without leaking secrets", () => {
+    assert.equal(
+      categorizeBlobError(new Error("BLOB_READ_WRITE_TOKEN is not configured")),
+      "configuration_error"
+    );
+    assert.equal(
+      categorizeBlobError(new Error("The deployment could not be found on Vercel. DEPLOYMENT_NOT_FOUND")),
+      "deployment_not_found"
+    );
+    assert.equal(
+      categorizeBlobError(new Error("401 Unauthorized: token expired")),
+      "authentication_error"
+    );
+    assert.equal(
+      categorizeBlobError(new Error("403 Forbidden: access denied")),
+      "authorization_error"
+    );
+    assert.equal(
+      categorizeBlobError(new Error("fetch failed: ECONNRESET")),
+      "network_error"
+    );
+    assert.equal(
+      categorizeBlobError(new Error("Vercel Blob: rate limited")),
+      "blob_api_error"
+    );
+  });
+
+  it("19. logs DEPLOYMENT_NOT_FOUND error category and preserves sanitization on upload failure", async () => {
+    const errorLogs: string[] = [];
+    const origError = console.error;
+    console.error = (...args: unknown[]) => {
+      errorLogs.push(args.map(String).join(" "));
+    };
+
+    const failingClient = {
+      put: async () => {
+        throw new Error(
+          "Vercel Blob upload failed (404): The deployment could not be found on Vercel. DEPLOYMENT_NOT_FOUND for token vercel_blob_rw_secret123"
+        );
+      },
+      get: async () => null,
+      head: async () => { throw new Error("not found"); },
+      del: async () => {},
+    };
+
+    const failingProvider = new VercelBlobStorageProvider("test-token", {
+      client: failingClient as any,
+    });
+
+    try {
+      await assert.rejects(
+        async () => {
+          await failingProvider.upload("documents/test/sample.pdf", Buffer.from("%PDF-1.4 test"));
+        },
+        (err: Error) => {
+          assert.doesNotMatch(err.message, /vercel_blob_rw_secret123/);
+          assert.match(err.message, /\[REDACTED_BLOB_TOKEN\]/);
+          return true;
+        }
+      );
+
+      assert.ok(errorLogs.some((l) => l.includes("[STORAGE] Vercel Blob upload failed")));
+      assert.ok(errorLogs.some((l) => l.includes("[STORAGE] provider=vercel-blob")));
+      assert.ok(errorLogs.some((l) => l.includes("[STORAGE] error_category=deployment_not_found")));
+    } finally {
+      console.error = origError;
+    }
+  });
+
+  it("20. safe server storage diagnostic reports provider and adapter without leaking secrets", () => {
+    const origToken = process.env.BLOB_READ_WRITE_TOKEN;
+    const origProvider = process.env.STORAGE_PROVIDER;
+
+    try {
+      process.env.STORAGE_PROVIDER = "vercel-blob";
+      process.env.BLOB_READ_WRITE_TOKEN = "vercel_blob_rw_supersecrettoken_12345";
+
+      const diag = getStorageDiagnostic();
+      assert.equal(diag.provider, "vercel-blob");
+      assert.equal(diag.blobConfigured, true);
+      assert.equal(diag.adapter, "VercelBlobStorageProvider");
+
+      // Verify JSON serialized diagnostic contains NO secrets
+      const serialized = JSON.stringify(diag);
+      assert.doesNotMatch(serialized, /supersecrettoken/);
+      assert.doesNotMatch(serialized, /token/i);
+    } finally {
+      if (origToken !== undefined) process.env.BLOB_READ_WRITE_TOKEN = origToken;
+      else delete process.env.BLOB_READ_WRITE_TOKEN;
+      if (origProvider !== undefined) process.env.STORAGE_PROVIDER = origProvider;
+      else delete process.env.STORAGE_PROVIDER;
+    }
+  });
+
+  it("21. Excel and PDF storage integration uses the unified StorageProvider abstraction", async () => {
+    const blobProvider = new VercelBlobStorageProvider("test-blob-token-unified");
+    setStorageProvider(blobProvider);
+
+    const pdfBuffer = await createSyntheticPdf(["Unified Storage Provider Verification"]);
+    const uploadResult = await blobProvider.upload("documents/unified-test/test.pdf", pdfBuffer, {
+      contentType: "application/pdf",
+    });
+
+    assert.equal(uploadResult.storageKey, "documents/unified-test/test.pdf");
+    assert.equal(await blobProvider.exists("documents/unified-test/test.pdf"), true);
+
+    const downloadedPdf = await blobProvider.download("documents/unified-test/test.pdf");
+    assert.deepEqual(downloadedPdf, pdfBuffer);
+
+    // Verify XLSX upload through same abstraction
+    const excelBuffer = Buffer.from("PK\x03\x04mock-excel-binary");
+    const excelResult = await blobProvider.upload("exports/unified-test/statement.xlsx", excelBuffer, {
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    assert.equal(excelResult.storageKey, "exports/unified-test/statement.xlsx");
+    assert.equal(await blobProvider.exists("exports/unified-test/statement.xlsx"), true);
+
+    const downloadedExcel = await blobProvider.download("exports/unified-test/statement.xlsx");
+    assert.deepEqual(downloadedExcel, excelBuffer);
   });
 });

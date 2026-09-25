@@ -141,6 +141,31 @@ export function validateStorageConfiguration(): StorageValidationStatus {
   };
 }
 
+export interface StorageDiagnostic {
+  provider: "local" | "vercel-blob";
+  blobConfigured: boolean;
+  adapter: string;
+}
+
+/**
+ * Internal server-side storage configuration diagnostic.
+ * Strictly reports only provider, configuration presence, and adapter name.
+ * NEVER exposes tokens, connection strings, paths, or secrets.
+ */
+export function getStorageDiagnostic(): StorageDiagnostic {
+  const providerName = resolveStorageProviderName();
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const blobConfigured = Boolean(token && token.trim().length > 0);
+  return {
+    provider: providerName,
+    blobConfigured,
+    adapter:
+      providerName === "vercel-blob"
+        ? "VercelBlobStorageProvider"
+        : "LocalStorageProvider",
+  };
+}
+
 /**
  * Asserts that storage is properly configured before document processing.
  * Throws a safe error if misconfigured.
