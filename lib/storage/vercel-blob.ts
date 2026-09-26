@@ -134,17 +134,32 @@ export class VercelBlobStorageProvider implements StorageProvider {
   private readonly access: "private" | "public";
   private readonly customClient?: VercelBlobClient;
 
+  public static get mockClient(): VercelBlobClient | null {
+    return globalMockBlobClient;
+  }
+
+  public static set mockClient(mock: VercelBlobClient | null) {
+    globalMockBlobClient = mock;
+  }
+
   constructor(
     token?: string,
-    options?: {
-      access?: "private" | "public";
-      client?: VercelBlobClient;
-    }
+    options?:
+      | {
+          access?: "private" | "public";
+          client?: VercelBlobClient;
+        }
+      | VercelBlobClient
   ) {
     this.token = token !== undefined ? token : (process.env.BLOB_READ_WRITE_TOKEN || "");
-    // Default to 'private' access to protect sensitive banking & financial documents
-    this.access = options?.access || (process.env.BLOB_ACCESS === "public" ? "public" : "private");
-    this.customClient = options?.client;
+    if (options && typeof (options as any).put === "function") {
+      this.access = "private";
+      this.customClient = options as VercelBlobClient;
+    } else {
+      const opts = options as { access?: "private" | "public"; client?: VercelBlobClient } | undefined;
+      this.access = opts?.access || (process.env.BLOB_ACCESS === "public" ? "public" : "private");
+      this.customClient = opts?.client;
+    }
   }
 
   private ensureConfigured(): void {
