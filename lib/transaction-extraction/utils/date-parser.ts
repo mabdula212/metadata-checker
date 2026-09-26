@@ -78,22 +78,44 @@ export function determineReferenceYear(options?: DateParseOptions): number {
 }
 
 /**
+ * Expands a 2-digit year (e.g. 26) into a 4-digit year (e.g. 2026) using reference context or financial epoch.
+ */
+export function expandTwoDigitYear(twoDigitYear: number, options?: DateParseOptions): number {
+  if (twoDigitYear >= 100) return twoDigitYear;
+  const refYear = determineReferenceYear(options);
+  const refCentury = Math.floor(refYear / 100) * 100;
+  const candidate = refCentury + twoDigitYear;
+  if (Math.abs(candidate - refYear) <= 50) {
+    return candidate;
+  }
+  return twoDigitYear < 70 ? 2000 + twoDigitYear : 1900 + twoDigitYear;
+}
+
+/**
  * Parses a raw date string into an ISO YYYY-MM-DD format.
  * Returns null if the date is invalid or ambiguous without a resolvable year.
+ * Supports both 4-digit (2026) and 2-digit (26) years as well as strings with optional timestamps.
  */
 export function parseTransactionDate(
   rawDateStr: string,
   options?: DateParseOptions
 ): string | null {
   if (!rawDateStr) return null;
-  const str = rawDateStr.trim().replace(/,/g, "");
+  let str = rawDateStr.trim().replace(/,/g, "");
 
-  // 1. DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
-  const fullNumericMatch = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+  // Strip optional trailing time e.g. "02/03/26 13:49:24" or "02/03/26 13:49"
+  str = str.replace(/\s+\d{1,2}:\d{2}(?::\d{2})?.*$/, "").trim();
+
+  // 1. DD/MM/YYYY or DD/MM/YY or DD-MM-YYYY or DD-MM-YY or DD.MM.YYYY or DD.MM.YY
+  const fullNumericMatch = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
   if (fullNumericMatch) {
     const day = parseInt(fullNumericMatch[1], 10);
     const month = parseInt(fullNumericMatch[2], 10);
-    const year = parseInt(fullNumericMatch[3], 10);
+    let year = parseInt(fullNumericMatch[3], 10);
+
+    if (year < 100) {
+      year = expandTwoDigitYear(year, options);
+    }
 
     if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1990 && year <= 2099) {
       return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -101,25 +123,33 @@ export function parseTransactionDate(
     return null;
   }
 
-  // 2. YYYY-MM-DD or YYYY/MM/DD
-  const isoMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  // 2. YYYY-MM-DD or YYYY/MM/DD or YY-MM-DD or YY/MM/DD
+  const isoMatch = str.match(/^(\d{2,4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
   if (isoMatch) {
-    const year = parseInt(isoMatch[1], 10);
+    let year = parseInt(isoMatch[1], 10);
     const month = parseInt(isoMatch[2], 10);
     const day = parseInt(isoMatch[3], 10);
 
+    if (year < 100) {
+      year = expandTwoDigitYear(year, options);
+    }
+
     if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1990 && year <= 2099) {
       return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     }
     return null;
   }
 
-  // 3. DD MonthName YYYY (e.g. "01 Agustus 2026", "25 Dec 2026")
-  const fullTextualMatch = str.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
+  // 3. DD MonthName YYYY or DD MonthName YY (e.g. "01 Agustus 2026", "25 Dec 26")
+  const fullTextualMatch = str.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{2,4})$/);
   if (fullTextualMatch) {
     const day = parseInt(fullTextualMatch[1], 10);
     const monthStr = MONTH_MAP[fullTextualMatch[2].toLowerCase()];
-    const year = parseInt(fullTextualMatch[3], 10);
+    let year = parseInt(fullTextualMatch[3], 10);
+
+    if (year < 100) {
+      year = expandTwoDigitYear(year, options);
+    }
 
     if (monthStr && day >= 1 && day <= 31 && year >= 1990 && year <= 2099) {
       return `${year}-${monthStr}-${String(day).padStart(2, "0")}`;

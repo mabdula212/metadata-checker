@@ -53,6 +53,20 @@ describe("Transaction Extraction Engine", () => {
       const iso = parseTransactionDate("05-09-2026");
       assert.equal(iso, "2026-09-05");
     });
+
+    it("parses 2-digit year dates (DD/MM/YY) and strips timestamps", () => {
+      const iso1 = parseTransactionDate("02/03/26");
+      assert.equal(iso1, "2026-03-02");
+
+      const iso2 = parseTransactionDate("02/03/26 13:49:24");
+      assert.equal(iso2, "2026-03-02");
+
+      const iso3 = parseTransactionDate("15-08-26");
+      assert.equal(iso3, "2026-08-15");
+
+      const iso4 = parseTransactionDate("15 Agu 26");
+      assert.equal(iso4, "2026-08-15");
+    });
   });
 
   describe("Balance Extraction and Progression", () => {
@@ -199,6 +213,95 @@ describe("Transaction Extraction Engine", () => {
       assert.equal(result.transactions.length, 2);
       assert.equal(result.transactions[0].transactionType, "INTEREST");
       assert.equal(result.transactions[1].transactionType, "BILL_PAYMENT");
+    });
+  });
+
+  describe("BRI (Bank Rakyat Indonesia) Statement Parsing", () => {
+    it("extracts 2-column BRImo statement with 2-digit year (02/03/26) and timestamp (13:49:24)", () => {
+      const briText = `
+        PT BANK RAKYAT INDONESIA (PERSERO) TBK
+        REKENING KORAN / E-STATEMENT
+        SALDO AWAL : 1,300,000.00
+        02/03/26 13:49:24 Transfer BI-Fast Ke Bank BCA 1234567890 50,000.00 1,250,000.00
+        03/03/26 09:15:00 Transfer Masuk Dari Ahmad 9876543210 200,000.00 1,450,000.00
+        04/03/26 11:30:12 Biaya Administrasi Bulanan 12,000.00 1,438,000.00
+        SALDO AKHIR : 1,438,000.00
+      `;
+
+      const result = defaultTransactionExtractionEngine.extract({
+        fullText: briText,
+        pages: [{ pageNumber: 1, text: briText, characterCount: briText.length }],
+        bankCode: "BRI",
+        statementPeriodStart: "2026-03-01",
+        statementPeriodEnd: "2026-03-31",
+      });
+
+      assert.equal(result.status, "COMPLETED");
+      assert.equal(result.transactions.length, 3);
+      assert.equal(result.reviewRows.length, 0);
+
+      // Row 1: BI-Fast Transfer Out
+      assert.equal(result.transactions[0].transactionDate, "2026-03-02");
+      assert.equal(result.transactions[0].rawDate, "02/03/26");
+      assert.equal(result.transactions[0].description, "Transfer BI-Fast Ke Bank BCA 1234567890");
+      assert.equal(result.transactions[0].debit, "50000.00");
+      assert.equal(result.transactions[0].credit, null);
+      assert.equal(result.transactions[0].balance, "1250000.00");
+
+      // Row 2: Transfer In
+      assert.equal(result.transactions[1].transactionDate, "2026-03-03");
+      assert.equal(result.transactions[1].debit, null);
+      assert.equal(result.transactions[1].credit, "200000.00");
+      assert.equal(result.transactions[1].balance, "1450000.00");
+
+      // Row 3: Admin fee
+      assert.equal(result.transactions[2].transactionDate, "2026-03-04");
+      assert.equal(result.transactions[2].debit, "12000.00");
+      assert.equal(result.transactions[2].credit, null);
+      assert.equal(result.transactions[2].balance, "1438000.00");
+    });
+
+    it("extracts 3-column conventional BRI statement with Debet, Kredit, Saldo", () => {
+      const briText = `
+        PT BANK RAKYAT INDONESIA (PERSERO) TBK
+        REKENING KORAN
+        TANGGAL TRANSAKSI  URAIAN TRANSAKSI  CHQ/NO REF  DEBET  KREDIT  SALDO
+        02/08/2026  TRSF E-BANKING  00998877  0.00  5,000,000.00  5,000,000.00
+        03/08/2026  TARIK TUNAI ATM  00998878  500,000.00  0.00  4,500,000.00
+      `;
+
+      const result = defaultTransactionExtractionEngine.extract({
+        fullText: briText,
+        pages: [{ pageNumber: 1, text: briText, characterCount: briText.length }],
+        bankCode: "BRI",
+      });
+
+      assert.equal(result.status, "COMPLETED");
+      assert.equal(result.transactions.length, 2);
+      assert.equal(result.transactions[0].credit, "5000000.00");
+      assert.equal(result.transactions[0].debit, null);
+      assert.equal(result.transactions[1].debit, "500000.00");
+      assert.equal(result.transactions[1].credit, null);
+    });
+
+    it("extracts multi-line BRI transactions where amounts are on continuation lines", () => {
+      const briText = `
+        PT BANK RAKYAT INDONESIA
+        02/03/26 13:49:24 Transfer BI-Fast
+        Ke Bank BCA 1234567890 Budi
+        50.000,00 1.250.000,00
+      `;
+
+      const result = defaultTransactionExtractionEngine.extract({
+        fullText: briText,
+        pages: [{ pageNumber: 1, text: briText, characterCount: briText.length }],
+        bankCode: "BRI",
+      });
+
+      assert.equal(result.transactions.length, 1);
+      assert.equal(result.transactions[0].transactionDate, "2026-03-02");
+      assert.equal(result.transactions[0].debit, "50000.00");
+      assert.equal(result.transactions[0].balance, "1250000.00");
     });
   });
 

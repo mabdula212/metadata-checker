@@ -49,12 +49,12 @@ export class GenericTransactionParser implements BankTransactionParser {
           continue;
         }
 
-        const line = cand.leadLine.replace(/^[0-9\/\-\.]+\s*/, "").trim();
+        const line = cand.leadLine.replace(/^[0-9\/\-\.]+\s*(?:\d{1,2}:\d{2}(?::\d{2})?\s*)?/, "").trim();
 
         // Check 3 amounts first (Debit, Credit, Balance)
         const threeAmounts = line.match(/([0-9.,]+)\s+([0-9.,]+)\s+([0-9.,]+)$/);
         // Check 2 amounts (Amount [flag], Balance)
-        const twoAmounts = line.match(/([0-9.,]+)\s*(CR|DB|DR|\+|\-)?\s+([0-9.,]+)$/i);
+        const twoAmounts = line.match(/([0-9.,]+)\s*(\([CD]R?\)|CR|DB|DR|[CD]|\+|\-)?\s+([0-9.,]+)$/i);
 
         if (threeAmounts) {
           const rawDebet = threeAmounts[1];
