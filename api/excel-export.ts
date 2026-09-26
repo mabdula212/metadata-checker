@@ -186,6 +186,13 @@ export default async function excelExportHandler(
     ) {
       statusCode = 503;
       sanitizedError = "Production storage is not configured.";
+    } else if (
+      rawError.includes("Vercel Blob") ||
+      rawError.includes("DEPLOYMENT_NOT_FOUND") ||
+      rawError.includes("Deployment could not be found")
+    ) {
+      statusCode = 500;
+      sanitizedError = "Export storage processing failed. Please try again later.";
     } else if (rawError.includes("Document not found")) {
       statusCode = 404;
       sanitizedError = rawError

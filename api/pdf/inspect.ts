@@ -256,14 +256,35 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   } catch (err: unknown) {
     const rawMessage = err instanceof Error ? err.message : "An unexpected processing error occurred.";
     let sanitizedMessage: string;
+    let statusCode = 500;
 
-    if (
+    const isStorageConfigError =
       rawMessage.includes("Production storage is not configured") ||
-      rawMessage.includes("BLOB_READ_WRITE_TOKEN") ||
-      (rawMessage.includes("storage") && rawMessage.includes("ENOENT"))
-    ) {
+      rawMessage.includes("BLOB_READ_WRITE_TOKEN");
+
+    const isStorageError =
+      rawMessage.includes("Vercel Blob") ||
+      rawMessage.includes("DEPLOYMENT_NOT_FOUND") ||
+      rawMessage.includes("Deployment could not be found") ||
+      (rawMessage.includes("storage") && rawMessage.includes("ENOENT"));
+
+    if (isStorageConfigError) {
+      statusCode = 503;
       sanitizedMessage = "Production storage is not configured.";
+    } else if (isStorageError) {
+      statusCode = 500;
+      sanitizedMessage = "Document storage processing failed. Please try again later.";
+    } else if (
+      rawMessage.includes("Invalid PDF") ||
+      rawMessage.includes("corrupted") ||
+      rawMessage.includes("Failed to parse PDF metadata") ||
+      rawMessage.includes("PDF file size exceeds") ||
+      rawMessage.includes("File is empty")
+    ) {
+      statusCode = 400;
+      sanitizedMessage = rawMessage.slice(0, 300);
     } else {
+      statusCode = 400;
       sanitizedMessage = rawMessage
         .replace(/postgresql:\/\/[^@]+@/gi, "postgresql://***:***@")
         .replace(/\/var\/task\/[^\s]+/gi, "[server-path]")
@@ -271,7 +292,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         .slice(0, 300);
     }
 
-    res.statusCode = 400;
+    res.statusCode = statusCode;
+    res.setHeader("Content-Type", "application/json");
     res.end(
       JSON.stringify({
         success: false,

@@ -26,6 +26,7 @@ prisma/*.db-journal
 
 # Local storage uploads
 /storage/
+tmp_test_exports/
 
 
 
