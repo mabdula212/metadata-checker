@@ -81,8 +81,14 @@ export default async function bankDetectionHandler(
       }
     }
 
+    // Optional password if needed for decryption
+    const password =
+      typeof parsedBody.password === "string" && parsedBody.password.length > 0
+        ? parsedBody.password
+        : undefined;
+
     // Execute bank detection workflow
-    const result = await runBankDetectionOnDocument(documentId, directBuffer);
+    const result = await runBankDetectionOnDocument(documentId, directBuffer, password);
 
     // Record audit event
     await logAuditEvent({

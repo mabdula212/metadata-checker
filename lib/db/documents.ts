@@ -3,6 +3,12 @@ import { type ExtractedPdfMetadata, createStableBufferCopy } from "../pdf/pdf-in
 import { extractPdfText } from "../pdf/pdf-text-extractor.js";
 import { defaultBankDetectionEngine, type BankDetectionResult } from "../bank-detection/index.js";
 import {
+  getDecryptedBuffer,
+  storeDecryptedBuffer,
+  detectEncryption,
+  decryptPdf,
+} from "../pdf/pdf-decryptor.js";
+import {
   defaultTransactionExtractionEngine,
   type ParsedTransaction,
   type ReviewRow,
@@ -330,7 +336,8 @@ export interface BankDetectionWorkflowResult {
  */
 export async function runBankDetectionOnDocument(
   documentId: string,
-  directBuffer?: Buffer
+  directBuffer?: Buffer,
+  password?: string
 ): Promise<BankDetectionWorkflowResult> {
   // 1. Fetch document and existing metadata
   const document = await prisma.document.findUnique({
@@ -345,13 +352,32 @@ export async function runBankDetectionOnDocument(
     throw new Error("Document not found");
   }
 
-  // 2. Retrieve document buffer via canonical getDocumentPdf
+  // 2. Retrieve document buffer via in-memory decrypted cache, directBuffer, or canonical getDocumentPdf
   let buffer: Buffer;
-  if (directBuffer && isPdfBuffer(directBuffer)) {
+  const cachedDecrypted = getDecryptedBuffer(documentId);
+  if (cachedDecrypted) {
+    buffer = cachedDecrypted;
+  } else if (directBuffer && isPdfBuffer(directBuffer)) {
     buffer = directBuffer;
   } else {
     const retrieved = await getDocumentPdf(documentId);
     buffer = retrieved.buffer;
+  }
+
+  // If buffer is encrypted, decrypt using password if provided
+  const encDetection = await detectEncryption(buffer);
+  if (encDetection.isEncrypted) {
+    if (password && password.trim().length > 0) {
+      const decRes = await decryptPdf(buffer, password);
+      if (decRes.success && decRes.decryptedBuffer) {
+        buffer = decRes.decryptedBuffer;
+        storeDecryptedBuffer(documentId, buffer);
+      } else {
+        throw new Error("Password PDF salah atau dokumen tidak dapat dibuka.");
+      }
+    } else {
+      throw new Error("The PDF document is password-protected or encrypted.");
+    }
   }
 
   // 3. Create BANK_DETECTION ProcessingJob (QUEUED -> PROCESSING)
@@ -551,7 +577,8 @@ export interface TransactionExtractionWorkflowResult {
  */
 export async function runTransactionExtractionOnDocument(
   documentId: string,
-  directBuffer?: Buffer
+  directBuffer?: Buffer,
+  password?: string
 ): Promise<TransactionExtractionWorkflowResult> {
   // 1. Verify document exists
   const document = await prisma.document.findUnique({
@@ -592,13 +619,32 @@ export async function runTransactionExtractionOnDocument(
   });
 
   try {
-    // 5. Retrieve PDF buffer via canonical getDocumentPdf
+    // 5. Retrieve PDF buffer via in-memory decrypted cache, directBuffer, or canonical getDocumentPdf
     let buffer: Buffer;
-    if (directBuffer && isPdfBuffer(directBuffer)) {
+    const cachedDecrypted = getDecryptedBuffer(documentId);
+    if (cachedDecrypted) {
+      buffer = cachedDecrypted;
+    } else if (directBuffer && isPdfBuffer(directBuffer)) {
       buffer = directBuffer;
     } else {
       const retrieved = await getDocumentPdf(documentId);
       buffer = retrieved.buffer;
+    }
+
+    // If buffer is encrypted, decrypt using password if provided
+    const encDetection = await detectEncryption(buffer);
+    if (encDetection.isEncrypted) {
+      if (password && password.trim().length > 0) {
+        const decRes = await decryptPdf(buffer, password);
+        if (decRes.success && decRes.decryptedBuffer) {
+          buffer = decRes.decryptedBuffer;
+          storeDecryptedBuffer(documentId, buffer);
+        } else {
+          throw new Error("Password PDF salah atau dokumen tidak dapat dibuka.");
+        }
+      } else {
+        throw new Error("The PDF document is password-protected or encrypted.");
+      }
     }
 
     // 6. Extract PDF text per page (preserves page boundaries)

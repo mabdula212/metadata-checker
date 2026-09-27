@@ -89,6 +89,9 @@ export interface BankDetectionApiResponse {
 export interface InspectApiResponse {
   success: boolean;
   isDuplicate?: boolean;
+  requiresPassword?: boolean;
+  securityState?: string;
+  algorithm?: string;
   message?: string;
   error?: string;
   data?: {

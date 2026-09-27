@@ -5,8 +5,14 @@ import {
   inspectPdfMetadata,
   createStableByteCopy,
   createStableBufferCopy,
+  calculateFileHash,
   MAX_PDF_SIZE_BYTES,
 } from "../../lib/pdf/pdf-inspector.js";
+import {
+  detectEncryption,
+  decryptPdf,
+  storeDecryptedBuffer,
+} from "../../lib/pdf/pdf-decryptor.js";
 import { processAndSaveDocument } from "../../lib/db/documents.js";
 import { requireAuth, logAuditEvent } from "../../lib/auth/index.js";
 import { assertStorageConfigured } from "../../lib/storage/index.js";
@@ -15,10 +21,11 @@ interface ParsedUpload {
   fileName: string;
   bytes: Uint8Array;
   buffer: Buffer;
+  password?: string | null;
 }
 
 /**
- * Parses an incoming HTTP request for uploaded PDF data.
+ * Parses an incoming HTTP request for uploaded PDF data and optional PDF password.
  * Supports web request.formData(), Node multipart/form-data, and application/json (base64).
  * Creates a stable, independent byte representation immediately upon receiving file bytes.
  */
@@ -28,13 +35,14 @@ async function parseRequestPayload(req: IncomingMessage): Promise<ParsedUpload> 
     try {
       const formData = await (req as unknown as { formData: () => Promise<FormData> }).formData();
       const fileItem = formData.get("file") || formData.get("pdf") || formData.get("document");
+      const password = (formData.get("password") as string) || null;
       if (fileItem && typeof (fileItem as Blob).arrayBuffer === "function") {
         const file = fileItem as File;
         const sourceArrayBuffer = await file.arrayBuffer();
         const bytes = new Uint8Array(sourceArrayBuffer.slice(0));
         const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         const fileName = (file as { name?: string }).name || "document.pdf";
-        return { fileName, bytes, buffer };
+        return { fileName, bytes, buffer, password };
       }
     } catch {
       // Fall through to streaming / busboy parsing
@@ -55,8 +63,15 @@ async function parseRequestPayload(req: IncomingMessage): Promise<ParsedUpload> 
       });
 
       let originalFileName = "document.pdf";
+      let password: string | null = null;
       const chunks: Buffer[] = [];
       let limitExceeded = false;
+
+      busboy.on("field", (fieldname, val) => {
+        if (fieldname === "password") {
+          password = val;
+        }
+      });
 
       busboy.on("file", (_fieldname, file, info) => {
         originalFileName = info.filename || "document.pdf";
@@ -99,7 +114,7 @@ async function parseRequestPayload(req: IncomingMessage): Promise<ParsedUpload> 
         }
 
         const stableBuffer = Buffer.from(stableArrayBuffer);
-        resolve({ fileName: originalFileName, bytes: stableBytes, buffer: stableBuffer });
+        resolve({ fileName: originalFileName, bytes: stableBytes, buffer: stableBuffer, password });
       });
 
       busboy.on("error", (err: unknown) => {
@@ -150,7 +165,8 @@ async function parseRequestPayload(req: IncomingMessage): Promise<ParsedUpload> 
           const stableBytes = createStableByteCopy(rawBuffer);
           const stableBuffer = createStableBufferCopy(stableBytes);
           const fileName = data.fileName || "document.pdf";
-          resolve({ fileName, bytes: stableBytes, buffer: stableBuffer });
+          const password = data.password || null;
+          resolve({ fileName, bytes: stableBytes, buffer: stableBuffer, password });
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : "Invalid JSON";
           reject(new Error(`Failed to parse JSON body: ${msg}`));
@@ -207,25 +223,113 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   try {
     console.log("[PDF_INSPECT] request received");
 
-    // 1. Parse and extract uploaded file
-    const { fileName, buffer, bytes } = await parseRequestPayload(req);
+    // 1. Parse and extract uploaded file & optional password
+    const { fileName, buffer, bytes, password } = await parseRequestPayload(req);
     console.log("[PDF_INSPECT] file bytes loaded");
     console.log("[PDF_INSPECT] stable byte copy created");
 
-    // 2. Perform server-side metadata inspection and validation
-    // Uses stable independent byte representation (validates magic bytes, sha256, pdf-lib)
-    const extractedMetadata = await inspectPdfMetadata(bytes || buffer);
+    // 2. Encryption Detection
+    const encryptionDetection = await detectEncryption(bytes || buffer);
 
-    // 3. Process and persist document + metadata + processing job under authenticated user
+    if (encryptionDetection.securityState === "INVALID_PDF") {
+      res.statusCode = 400;
+      res.end(
+        JSON.stringify({
+          success: false,
+          securityState: "INVALID_PDF",
+          error: encryptionDetection.errorMessage || "Invalid file signature: The file is not a valid PDF (missing %PDF- header).",
+        })
+      );
+      return;
+    }
+
+    if (encryptionDetection.securityState === "UNSUPPORTED_ENCRYPTION") {
+      res.statusCode = 422;
+      res.end(
+        JSON.stringify({
+          success: false,
+          securityState: "UNSUPPORTED_ENCRYPTION",
+          error: "Jenis enkripsi PDF ini belum didukung.",
+          algorithm: encryptionDetection.algorithm || "UNKNOWN",
+        })
+      );
+      return;
+    }
+
+    let processingBuffer = buffer;
+    let processingBytes = bytes;
+    let isEncryptedDoc = false;
+
+    if (encryptionDetection.securityState === "PASSWORD_PROTECTED") {
+      isEncryptedDoc = true;
+
+      // If user has not yet supplied a password, prompt for it
+      if (!password || password.trim().length === 0) {
+        res.statusCode = 422;
+        res.end(
+          JSON.stringify({
+            success: false,
+            requiresPassword: true,
+            securityState: "PASSWORD_PROTECTED",
+            message: "Dokumen ini dilindungi password. Masukkan password PDF untuk melanjutkan analisis.",
+            algorithm: encryptionDetection.algorithm,
+          })
+        );
+        return;
+      }
+
+      // Decrypt PDF in-memory
+      const decryptResult = await decryptPdf(bytes || buffer, password);
+      if (!decryptResult.success) {
+        res.statusCode = 422;
+        res.end(
+          JSON.stringify({
+            success: false,
+            requiresPassword: true,
+            securityState: decryptResult.securityState,
+            error: decryptResult.error || "Password PDF salah atau dokumen tidak dapat dibuka.",
+            algorithm: decryptResult.algorithm,
+          })
+        );
+        return;
+      }
+
+      processingBytes = decryptResult.decryptedBytes!;
+      processingBuffer = decryptResult.decryptedBuffer!;
+    }
+
+    // 3. Perform server-side metadata inspection and validation
+    // Computes original file hash from the original uploaded file (encrypted)
+    const originalFileHash = calculateFileHash(bytes || buffer);
+    const extractedMetadata = await inspectPdfMetadata(processingBytes || processingBuffer);
+
+    // Ensure original file hash remains associated with the uploaded document
+    extractedMetadata.fileHash = originalFileHash;
+    extractedMetadata.rawMetadataJson = {
+      ...extractedMetadata.rawMetadataJson,
+      originalFileHash,
+      securityState: encryptionDetection.securityState,
+      isEncrypted: isEncryptedDoc,
+      encryptionAlgorithm: encryptionDetection.algorithm || null,
+    };
+
+    // 4. Process and persist document + metadata + processing job under authenticated user
+    // The original encrypted PDF is saved to storage, NOT the decrypted copy!
     const result = await processAndSaveDocument({
       originalFileName: fileName,
       fileSize: buffer.length,
-      buffer,
+      buffer, // Original encrypted buffer
       extractedMetadata,
       userId: authUser.id,
     });
 
-    // 4. Record audit event
+    // If document was encrypted and successfully decrypted, store in-memory buffer
+    // so downstream bank-detection and transaction-extraction can run without re-decrypting
+    if (isEncryptedDoc) {
+      storeDecryptedBuffer(result.document.id, processingBuffer);
+    }
+
+    // 5. Record audit event
     await logAuditEvent({
       userId: authUser.id,
       action: "DOCUMENT_UPLOADED",
@@ -235,6 +339,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         fileName,
         fileSize: buffer.length,
         isDuplicate: result.isDuplicate,
+        isEncrypted: isEncryptedDoc,
+        securityState: encryptionDetection.securityState,
       },
     });
 
@@ -243,6 +349,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       JSON.stringify({
         success: true,
         isDuplicate: result.isDuplicate,
+        securityState: encryptionDetection.securityState,
+        isEncrypted: isEncryptedDoc,
         message: result.isDuplicate
           ? "This PDF has already been analyzed."
           : "PDF metadata successfully extracted and saved.",
@@ -286,6 +394,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     } else {
       statusCode = 400;
       sanitizedMessage = rawMessage
+        .replace(/password[:=][^\s&]+/gi, "password=***")
         .replace(/postgresql:\/\/[^@]+@/gi, "postgresql://***:***@")
         .replace(/\/var\/task\/[^\s]+/gi, "[server-path]")
         .replace(/[\/\\][a-zA-Z0-9_\-./]+\/(storage|documents)[^\s]*/gi, "[storage-path]")

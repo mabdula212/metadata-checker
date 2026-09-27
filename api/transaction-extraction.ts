@@ -123,8 +123,14 @@ export default async function transactionExtractionHandler(
       }
     }
 
+    // Optional password if needed for decryption
+    const password =
+      typeof parsedBody.password === "string" && parsedBody.password.length > 0
+        ? parsedBody.password
+        : undefined;
+
     // Execute transaction extraction
-    const result = await runTransactionExtractionOnDocument(documentId, directBuffer);
+    const result = await runTransactionExtractionOnDocument(documentId, directBuffer, password);
 
     // Record audit log
     await logAuditEvent({

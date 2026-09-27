@@ -21,6 +21,9 @@ import {
   Users,
   LayoutDashboard,
   ShieldCheck,
+  Lock,
+  KeyRound,
+  Unlock,
 } from "lucide-react";
 import type {
   DocumentRecord,
@@ -45,13 +48,21 @@ const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
 
 type ProcessingStage =
   | "IDLE"
+  | "UPLOADING"
+  | "ANALYZING"
   | "VALIDATING"
   | "READING"
+  | "PASSWORD_REQUIRED"
+  | "DECRYPTING"
+  | "INSPECTING"
   | "EXTRACTING"
   | "DETECTING"
   | "SAVING"
   | "EXTRACTING_TRANSACTIONS"
   | "COMPLETED"
+  | "WRONG_PASSWORD"
+  | "UNSUPPORTED_ENCRYPTION"
+  | "INVALID_PDF"
   | "ERROR";
 
 interface ProcessingStateInfo {
@@ -66,55 +77,103 @@ const STAGE_DETAILS: Record<ProcessingStage, ProcessingStateInfo> = {
     stage: "IDLE",
     stepNumber: 0,
     label: "Ready",
-    detail: "Select a PDF file to begin metadata inspection.",
+    detail: "Pilih file PDF untuk memulai inspeksi metadata.",
+  },
+  UPLOADING: {
+    stage: "UPLOADING",
+    stepNumber: 1,
+    label: "Uploading",
+    detail: "Mengunggah file PDF ke server...",
+  },
+  ANALYZING: {
+    stage: "ANALYZING",
+    stepNumber: 2,
+    label: "Analyzing",
+    detail: "Menganalisis tanda tangan berkas dan status enkripsi PDF...",
   },
   VALIDATING: {
     stage: "VALIDATING",
     stepNumber: 1,
     label: "Validating PDF",
-    detail: "Verifying MIME type, size limit (≤ 20 MB), and %PDF- file signature.",
+    detail: "Memverifikasi tipe MIME, batas ukuran (≤ 20 MB), dan header %PDF-.",
   },
   READING: {
     stage: "READING",
     stepNumber: 2,
     label: "Reading PDF",
-    detail: "Buffering PDF stream and preparing server payload.",
+    detail: "Membaca berkas PDF dan menyiapkan payload server.",
+  },
+  PASSWORD_REQUIRED: {
+    stage: "PASSWORD_REQUIRED",
+    stepNumber: 2,
+    label: "Password Required",
+    detail: "Dokumen ini dilindungi password. Masukkan password PDF untuk melanjutkan analisis.",
+  },
+  DECRYPTING: {
+    stage: "DECRYPTING",
+    stepNumber: 3,
+    label: "Decrypting",
+    detail: "Membuka enkripsi PDF secara aman di memori server...",
+  },
+  INSPECTING: {
+    stage: "INSPECTING",
+    stepNumber: 4,
+    label: "Inspecting",
+    detail: "Mengekstrak metadata PDF, trailer dictionary, dan SHA-256...",
   },
   EXTRACTING: {
     stage: "EXTRACTING",
     stepNumber: 3,
     label: "Extracting metadata",
-    detail: "Parsing trailer dictionary, document catalog, and page count.",
+    detail: "Mengekstrak metadata dokumen dan jumlah halaman.",
   },
   DETECTING: {
     stage: "DETECTING",
     stepNumber: 4,
-    label: "Detecting bank & period",
-    detail: "Evaluating rule-based Indonesian bank models, period, and account markers.",
+    label: "Detecting Bank",
+    detail: "Mendeteksi institusi perbankan, periode laporan, dan nomor rekening...",
   },
   SAVING: {
     stage: "SAVING",
     stepNumber: 5,
     label: "Saving result",
-    detail: "Persisting Statement and BankAccount records to Neon PostgreSQL.",
+    detail: "Menyimpan data laporan dan mutasi rekening...",
   },
   EXTRACTING_TRANSACTIONS: {
     stage: "EXTRACTING_TRANSACTIONS",
-    stepNumber: 6,
-    label: "Extracting transactions",
-    detail: "Parsing transaction rows, debit/credit mutations, and balance continuity.",
+    stepNumber: 5,
+    label: "Extracting Transactions",
+    detail: "Mengekstrak transaksi, mutasi debit/kredit, dan rekonsiliasi saldo...",
   },
   COMPLETED: {
     stage: "COMPLETED",
-    stepNumber: 7,
+    stepNumber: 6,
     label: "Completed",
-    detail: "Analysis complete and persisted.",
+    detail: "Analisis dokumen dan ekstraksi mutasi selesai.",
+  },
+  WRONG_PASSWORD: {
+    stage: "WRONG_PASSWORD",
+    stepNumber: 2,
+    label: "Wrong Password",
+    detail: "Password PDF salah atau dokumen tidak dapat dibuka.",
+  },
+  UNSUPPORTED_ENCRYPTION: {
+    stage: "UNSUPPORTED_ENCRYPTION",
+    stepNumber: 2,
+    label: "Unsupported Encryption",
+    detail: "Jenis enkripsi PDF ini belum didukung.",
+  },
+  INVALID_PDF: {
+    stage: "INVALID_PDF",
+    stepNumber: 1,
+    label: "Invalid PDF",
+    detail: "File PDF tidak valid atau kosong (0 bytes).",
   },
   ERROR: {
     stage: "ERROR",
     stepNumber: 0,
     label: "Processing Failed",
-    detail: "An error occurred during inspection.",
+    detail: "Terjadi kesalahan saat memproses dokumen.",
   },
 };
 
@@ -133,6 +192,9 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
 
   // Processing & result state
   const [processingStage, setProcessingStage] = useState<ProcessingStage>("IDLE");
+  const [pdfPassword, setPdfPassword] = useState<string>("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [isPasswordProtected, setIsPasswordProtected] = useState<boolean>(false);
   const [activeResult, setActiveResult] = useState<{
     document: DocumentRecord;
     metadata: DocumentMetadataRecord;
@@ -273,6 +335,9 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
   const handleClearFile = () => {
     setSelectedRawFile(null);
     setErrorMessage(null);
+    setPasswordError(null);
+    setPdfPassword("");
+    setIsPasswordProtected(false);
     setBankDetectionResult(null);
     setTransactionExtractionResult(null);
     setProcessingStage("IDLE");
@@ -287,6 +352,9 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
     setBankDetectionResult(null);
     setTransactionExtractionResult(null);
     setErrorMessage(null);
+    setPasswordError(null);
+    setPdfPassword("");
+    setIsPasswordProtected(false);
     setProcessingStage("IDLE");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -406,51 +474,105 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
   };
 
   /**
-   * Triggers both PDF Metadata extraction and Bank Statement Detection engines.
+   * Primary pipeline that inspects PDF, decrypts if password is provided,
+   * detects bank, and extracts transactions.
    */
-  const handleStartExtraction = async () => {
+  const executeProcessingPipeline = async (passwordToUse?: string) => {
     if (!selectedRawFile) return;
 
     setErrorMessage(null);
+    setPasswordError(null);
 
     try {
-      // 1. Validating PDF
-      setProcessingStage("VALIDATING");
-      await new Promise((r) => setTimeout(r, 150));
+      if (passwordToUse) {
+        setProcessingStage("DECRYPTING");
+      } else {
+        setProcessingStage("UPLOADING");
+      }
 
-      // 2. Reading PDF
-      setProcessingStage("READING");
-      const base64Promise = fileToBase64(selectedRawFile).catch(() => undefined);
       const formData = new FormData();
       formData.append("file", selectedRawFile, selectedRawFile.name);
+      if (passwordToUse) {
+        formData.append("password", passwordToUse);
+      }
 
-      // 3. Extracting metadata
-      setProcessingStage("EXTRACTING");
+      if (!passwordToUse) {
+        setProcessingStage("ANALYZING");
+      }
+
       const inspectRes = await safeApiFetch<InspectApiResponse>("/api/pdf/inspect", {
         method: "POST",
         body: formData,
       });
 
-      if (!inspectRes.ok || !inspectRes.data?.success || !inspectRes.data?.data) {
-        throw new Error(inspectRes.error || inspectRes.data?.error || "Server failed to extract PDF metadata.");
+      // Handle password required (HTTP 422 or requiresPassword)
+      if (
+        inspectRes.data?.requiresPassword ||
+        (inspectRes.status === 422 && inspectRes.data?.securityState === "PASSWORD_PROTECTED")
+      ) {
+        setIsPasswordProtected(true);
+        if (passwordToUse) {
+          // A password was supplied, but server rejected it -> WRONG_PASSWORD
+          setProcessingStage("WRONG_PASSWORD");
+          setPasswordError("Password PDF salah atau dokumen tidak dapat dibuka.");
+        } else {
+          // Document requires password
+          setProcessingStage("PASSWORD_REQUIRED");
+        }
+        return;
       }
+
+      // Handle unsupported encryption
+      if (
+        inspectRes.data?.securityState === "UNSUPPORTED_ENCRYPTION" ||
+        (inspectRes.data?.error && inspectRes.data.error.includes("belum didukung"))
+      ) {
+        setProcessingStage("UNSUPPORTED_ENCRYPTION");
+        setErrorMessage(
+          inspectRes.data?.error || "Jenis enkripsi PDF ini belum didukung."
+        );
+        return;
+      }
+
+      // Handle invalid PDF
+      if (
+        inspectRes.data?.securityState === "INVALID_PDF" ||
+        inspectRes.status === 400
+      ) {
+        setProcessingStage("INVALID_PDF");
+        setErrorMessage(
+          inspectRes.data?.error || inspectRes.error || "File yang diunggah bukan file PDF yang valid."
+        );
+        return;
+      }
+
+      if (!inspectRes.ok || !inspectRes.data?.success || !inspectRes.data?.data) {
+        throw new Error(
+          inspectRes.data?.error || inspectRes.error || "Server failed to extract PDF metadata."
+        );
+      }
+
+      // Successfully inspected & decrypted!
+      setProcessingStage("INSPECTING");
       const inspectData = inspectRes.data.data;
       const isDuplicate = Boolean(inspectRes.data.isDuplicate);
 
-      // 4. Detecting Bank & Statement Period
-      setProcessingStage("DETECTING");
-      const base64 = await base64Promise;
+      // Clean up password state in memory
+      setPdfPassword("");
+      setPasswordError(null);
+      setIsPasswordProtected(false);
 
+      // Detecting Bank & Statement Period
+      setProcessingStage("DETECTING");
       const detectionRes = await safeApiFetch<BankDetectionApiResponse>("/api/bank-detection", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           documentId: inspectData.document.id,
-          fileBase64: base64,
         }),
       });
 
-      // 5. Saving result
+      // Saving result & Extracting Transactions
       setProcessingStage("SAVING");
       if (detectionRes.ok && detectionRes.data?.success && detectionRes.data?.detection) {
         setBankDetectionResult(detectionRes.data.detection);
@@ -461,13 +583,13 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
           !detectionRes.data.detection.isScannedOrImageOnly
         ) {
           setProcessingStage("EXTRACTING_TRANSACTIONS");
-          await triggerTransactionExtraction(inspectData.document.id, base64);
+          await triggerTransactionExtraction(inspectData.document.id);
         }
       } else {
         setBankDetectionResult(null);
       }
 
-      // 6. Completed
+      // Completed
       setProcessingStage("COMPLETED");
       setActiveResult({
         document: inspectData.document,
@@ -485,9 +607,26 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
     }
   };
 
+  const handleStartExtraction = async () => {
+    await executeProcessingPipeline();
+  };
+
+  const handleUnlockAndAnalyze = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!pdfPassword || pdfPassword.trim().length === 0) {
+      setPasswordError("Dokumen ini dilindungi password. Masukkan password PDF untuk melanjutkan analisis.");
+      return;
+    }
+    await executeProcessingPipeline(pdfPassword);
+  };
+
   const isProcessing =
+    processingStage === "UPLOADING" ||
+    processingStage === "ANALYZING" ||
     processingStage === "VALIDATING" ||
     processingStage === "READING" ||
+    processingStage === "DECRYPTING" ||
+    processingStage === "INSPECTING" ||
     processingStage === "EXTRACTING" ||
     processingStage === "DETECTING" ||
     processingStage === "SAVING" ||
@@ -948,10 +1087,19 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        Valid PDF (≤ 20 MB)
-                      </span>
+                      {isPasswordProtected ||
+                      processingStage === "PASSWORD_REQUIRED" ||
+                      processingStage === "WRONG_PASSWORD" ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                          <Lock className="w-3.5 h-3.5" />
+                          PDF Protected
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Valid PDF (≤ 20 MB)
+                        </span>
+                      )}
                       {!isProcessing && (
                         <button
                           type="button"
@@ -964,34 +1112,115 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
                     </div>
                   </div>
 
-                  <div className="pt-3 border-t border-neutral-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="text-xs text-neutral-600 flex items-start gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
-                      <p className="leading-relaxed">
-                        Ready for server-side metadata inspection and Indonesian bank detection.
-                      </p>
-                    </div>
+                  {/* Password Protection UI Prompt (Requirement 2 & 11) */}
+                  {(isPasswordProtected ||
+                    processingStage === "PASSWORD_REQUIRED" ||
+                    processingStage === "WRONG_PASSWORD") && (
+                    <div className="p-4 sm:p-5 rounded-xl border border-amber-300 bg-amber-50/90 space-y-3.5 shadow-xs animate-in fade-in duration-200">
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-amber-200 text-amber-900 flex items-center justify-center shrink-0">
+                          <KeyRound className="w-5 h-5 text-amber-800" />
+                        </div>
+                        <div className="space-y-1">
+                          <h4 className="text-sm font-bold text-amber-950 flex items-center gap-2">
+                            PDF Protected
+                          </h4>
+                          <p className="text-xs text-amber-900/90 leading-relaxed">
+                            Dokumen ini dilindungi password. Masukkan password PDF untuk melanjutkan analisis.
+                          </p>
+                        </div>
+                      </div>
 
-                    <button
-                      type="button"
-                      onClick={handleStartExtraction}
-                      disabled={isProcessing}
-                      className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 disabled:bg-neutral-400 text-white text-xs sm:text-sm font-semibold transition-colors shadow-xs cursor-pointer shrink-0"
-                    >
-                      {isProcessing ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Processing...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-4 h-4 text-emerald-400" />
-                          Inspect &amp; Analyze Document
-                          <ArrowRight className="w-4 h-4" />
-                        </>
+                      {/* Password Error Alert */}
+                      {(passwordError || processingStage === "WRONG_PASSWORD") && (
+                        <div
+                          role="alert"
+                          className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2"
+                        >
+                          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                          <span className="font-medium">
+                            {passwordError || "Password PDF salah atau dokumen tidak dapat dibuka."}
+                          </span>
+                        </div>
                       )}
-                    </button>
-                  </div>
+
+                      {/* Password Input & Unlock Form */}
+                      <form onSubmit={handleUnlockAndAnalyze} className="space-y-3">
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                          <div className="relative flex-1">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
+                              <Lock className="w-4 h-4" />
+                            </div>
+                            <input
+                              type="password"
+                              autoComplete="off"
+                              value={pdfPassword}
+                              onChange={(e) => {
+                                setPdfPassword(e.target.value);
+                                setPasswordError(null);
+                              }}
+                              placeholder="Masukkan password PDF dokumen..."
+                              disabled={isProcessing}
+                              className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-white border border-amber-300 focus:border-neutral-900 rounded-lg focus:outline-none focus:ring-1 focus:ring-neutral-900 font-mono text-neutral-900 placeholder:text-neutral-400"
+                            />
+                          </div>
+                          <button
+                            type="submit"
+                            disabled={isProcessing || !pdfPassword}
+                            className="inline-flex items-center justify-center gap-2 px-5 py-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 disabled:bg-neutral-400 text-white text-xs sm:text-sm font-semibold transition-colors shadow-xs cursor-pointer shrink-0"
+                          >
+                            {isProcessing && processingStage === "DECRYPTING" ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Decrypting...
+                              </>
+                            ) : (
+                              <>
+                                <Unlock className="w-4 h-4" />
+                                Unlock &amp; Analyze
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-amber-800/80">
+                          Password hanya digunakan sesaat di memori server dan tidak pernah disimpan di database atau disk.
+                        </p>
+                      </form>
+                    </div>
+                  )}
+
+                  {!isPasswordProtected &&
+                    processingStage !== "PASSWORD_REQUIRED" &&
+                    processingStage !== "WRONG_PASSWORD" && (
+                      <div className="pt-3 border-t border-neutral-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="text-xs text-neutral-600 flex items-start gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                          <p className="leading-relaxed">
+                            Ready for server-side metadata inspection and Indonesian bank detection.
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleStartExtraction}
+                          disabled={isProcessing}
+                          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 disabled:bg-neutral-400 text-white text-xs sm:text-sm font-semibold transition-colors shadow-xs cursor-pointer shrink-0"
+                        >
+                          {isProcessing ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Processing...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-4 h-4 text-emerald-400" />
+                              Inspect &amp; Analyze Document
+                              <ArrowRight className="w-4 h-4" />
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
                 </div>
               )}
             </div>

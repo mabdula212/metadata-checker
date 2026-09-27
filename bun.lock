@@ -6,6 +6,7 @@
       "name": "react-example",
       "dependencies": {
         "@google/genai": "^2.4.0",
+        "@pdfsmaller/pdf-decrypt": "^1.0.1",
         "@prisma/client": "6",
         "@tailwindcss/vite": "^4.3.3",
         "@types/bcryptjs": "^3.0.0",
@@ -31,6 +32,7 @@
         "zod": "^4.6.5",
       },
       "devDependencies": {
+        "@pdfsmaller/pdf-encrypt": "^1.2.0",
         "@types/busboy": "^1.5.4",
         "@types/express": "^4.17.21",
         "@types/node": "^26.6.2",
@@ -119,6 +121,10 @@
     "@pdf-lib/standard-fonts": ["@pdf-lib/standard-fonts@1.0.0", "", { "dependencies": { "pako": "^1.0.6" } }, "sha512-hU30BK9IUN/su0Mn9VdlVKsWBS6GyhVfqjwl1FjZN4TxP6cCw0jP2w7V3Hf5uX7M0AZJ16vey9yE0ny7Sa59ZA=="],
 
     "@pdf-lib/upng": ["@pdf-lib/upng@1.0.1", "", { "dependencies": { "pako": "^1.0.10" } }, "sha512-dQK2FUMQtowVP00mtIksrlZhdFXQZPC+taih1q4CvPZ5vqdxR/LKBaFg0oAfzd1GlHZXXSPdQfzQnt+ViGvEIQ=="],
+
+    "@pdfsmaller/pdf-decrypt": ["@pdfsmaller/pdf-decrypt@1.0.1", "", { "peerDependencies": { "pdf-lib": "^1.17.1" } }, "sha512-UO5KyC+jvcXPTuxfTcEDODHBqO5+YFyuYz/f8tQfiRw5hqZTYTh0ea72OjGw6kuYEUiCyT+A/Ymg2A948Vwx0w=="],
+
+    "@pdfsmaller/pdf-encrypt": ["@pdfsmaller/pdf-encrypt@1.2.0", "", { "peerDependencies": { "pdf-lib": "^1.17.1" } }, "sha512-fIS3Ld+hOpoxmwmgoAnPjVC+9CN6/wbineumJ9ZOlJXZcuXft8OvdcSGqUDCpRSVJilrhYHsnJg626j06eM85g=="],
 
     "@prisma/client": ["@prisma/client@6.19.3", "", { "peerDependencies": { "prisma": "*", "typescript": ">=5.1.0" }, "optionalPeers": ["prisma", "typescript"] }, "sha512-mKq3jQFhjvko5LTJFHGilsuQs+W+T3Gm451NzuTDGQxwCzwXHYnIu2zGkRoW+Exq3Rob7yp2MfzSrdIiZVhrBg=="],
 
