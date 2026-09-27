@@ -6,6 +6,7 @@ import {
   parseTransactionDate,
   validateBalanceProgression,
   extractStatementBalances,
+  normalizeTransactions,
 } from "../lib/transaction-extraction/index.js";
 
 describe("Transaction Extraction Engine", () => {
@@ -118,6 +119,203 @@ describe("Transaction Extraction Engine", () => {
       assert.equal(check.status, "VALID");
       assert.equal(check.calculatedTotalCredit, "1000000.00");
       assert.equal(check.calculatedTotalDebit, "500000.00");
+    });
+
+    it("extracts 4-column table-layout summary balances accurately", () => {
+      const tableText = `
+        PT BANK CENTRAL ASIA TBK
+        INFORMASI REKENING
+        SALDO AWAL       TOTAL MUTASI DB   TOTAL MUTASI CR   SALDO AKHIR
+        10,000,000.00    2,000,000.00      5,000,000.00      13,000,000.00
+      `;
+
+      const balances = extractStatementBalances(tableText);
+      assert.equal(balances.openingBalance, "10000000.00");
+      assert.equal(balances.closingBalance, "13000000.00");
+      assert.equal(balances.summaryTotalDebit, "2000000.00");
+      assert.equal(balances.summaryTotalCredit, "5000000.00");
+    });
+
+    it("auto-corrects misclassified debit vs credit using balance delta truth", () => {
+      const rawTransactions = [
+        {
+          transactionDate: "2026-03-01",
+          rawDate: "01/03/26",
+          description: "SALDO AWAL CHECKPOINT",
+          referenceNumber: null,
+          debit: null,
+          credit: null,
+          balance: "1000000.00",
+          transactionType: "OTHER" as const,
+          confidence: "HIGH" as const,
+          confidenceReasons: [],
+          pageNumber: 1,
+          rawText: "",
+        },
+        {
+          transactionDate: "2026-03-02",
+          rawDate: "02/03/26",
+          description: "TRANSFER MASUK DARI ANDI",
+          referenceNumber: null,
+          debit: "250000.00", // mistakenly flagged as debit by a flawed rule
+          credit: null,
+          balance: "1250000.00", // balance clearly increased by 250,000!
+          transactionType: "TRANSFER_OUT" as const,
+          confidence: "MEDIUM" as const,
+          confidenceReasons: [],
+          pageNumber: 1,
+          rawText: "",
+        },
+        {
+          transactionDate: "2026-03-03",
+          rawDate: "03/03/26",
+          description: "TARIK TUNAI ATM",
+          referenceNumber: null,
+          debit: null,
+          credit: "100000.00", // mistakenly flagged as credit
+          balance: "1150000.00", // balance clearly decreased by 100,000!
+          transactionType: "CASH_DEPOSIT" as const,
+          confidence: "MEDIUM" as const,
+          confidenceReasons: [],
+          pageNumber: 1,
+          rawText: "",
+        },
+      ];
+
+      const extraction = defaultTransactionExtractionEngine.extract({
+        fullText: "SAMPLE",
+        pages: [{ pageNumber: 1, text: "SAMPLE", characterCount: 6 }],
+        bankCode: "GENERIC",
+      });
+
+      // Normalize directly to test auto-reconciliation
+      const normalized = normalizeTransactions(rawTransactions);
+
+      // Row 2: should be auto-corrected to CREDIT
+      assert.equal(normalized[1].credit, "250000.00");
+      assert.equal(normalized[1].debit, null);
+
+      // Row 3: should be auto-corrected to DEBIT
+      assert.equal(normalized[2].debit, "100000.00");
+      assert.equal(normalized[2].credit, null);
+
+      // Verify balance progression is now 100% valid
+      const prog = validateBalanceProgression(normalized, "1000000.00", "1150000.00");
+      assert.equal(prog.status, "VALID");
+      assert.equal(prog.consecutiveMismatches, 0);
+    });
+
+    it("interpolates missing intermediate balances smoothly", () => {
+      const transactions = [
+        {
+          transactionDate: "2026-03-01",
+          rawDate: "01/03/26",
+          description: "SETORAN TUNAI",
+          referenceNumber: null,
+          debit: null,
+          credit: "500000.00",
+          balance: "1500000.00",
+          transactionType: "CASH_DEPOSIT" as const,
+          confidence: "HIGH" as const,
+          confidenceReasons: [],
+          pageNumber: 1,
+          rawText: "",
+        },
+        {
+          transactionDate: "2026-03-02",
+          rawDate: "02/03/26",
+          description: "PEMBELIAN PULSA",
+          referenceNumber: null,
+          debit: "50000.00",
+          credit: null,
+          balance: "0.00", // omitted or unprinted balance
+          transactionType: "BILL_PAYMENT" as const,
+          confidence: "HIGH" as const,
+          confidenceReasons: [],
+          pageNumber: 1,
+          rawText: "",
+        },
+        {
+          transactionDate: "2026-03-03",
+          rawDate: "03/03/26",
+          description: "BIAYA ADMIN",
+          referenceNumber: null,
+          debit: "10000.00",
+          credit: null,
+          balance: "1440000.00", // 1,500,000 - 50,000 - 10,000 = 1,440,000
+          transactionType: "FEE" as const,
+          confidence: "HIGH" as const,
+          confidenceReasons: [],
+          pageNumber: 1,
+          rawText: "",
+        },
+      ];
+
+      const normalized = normalizeTransactions(transactions);
+      assert.equal(normalized[1].balance, "1450000.00"); // successfully interpolated
+
+      const prog = validateBalanceProgression(normalized, "1000000.00", "1440000.00");
+      assert.equal(prog.status, "VALID");
+      assert.equal(prog.consecutiveMismatches, 0);
+    });
+
+    it("detects reverse-chronological statement and reconciles into chronological order", () => {
+      // Exported with newest date first (31 March down to 1 March)
+      const reverseList = [
+        {
+          transactionDate: "2026-03-31",
+          rawDate: "31/03/26",
+          description: "BIAYA ADMIN AKHIR BULAN",
+          referenceNumber: null,
+          debit: "15000.00",
+          credit: null,
+          balance: "1235000.00",
+          transactionType: "FEE" as const,
+          confidence: "HIGH" as const,
+          confidenceReasons: [],
+          pageNumber: 1,
+          rawText: "",
+        },
+        {
+          transactionDate: "2026-03-15",
+          rawDate: "15/03/26",
+          description: "TRANSFER KELUAR",
+          referenceNumber: null,
+          debit: "250000.00",
+          credit: null,
+          balance: "1250000.00",
+          transactionType: "TRANSFER_OUT" as const,
+          confidence: "HIGH" as const,
+          confidenceReasons: [],
+          pageNumber: 1,
+          rawText: "",
+        },
+        {
+          transactionDate: "2026-03-01",
+          rawDate: "01/03/26",
+          description: "SETORAN AWAL",
+          referenceNumber: null,
+          debit: null,
+          credit: "500000.00",
+          balance: "1500000.00",
+          transactionType: "CASH_DEPOSIT" as const,
+          confidence: "HIGH" as const,
+          confidenceReasons: [],
+          pageNumber: 1,
+          rawText: "",
+        },
+      ];
+
+      const normalized = normalizeTransactions(reverseList);
+
+      // Must be sorted in chronological order (earliest date first)
+      assert.equal(normalized[0].transactionDate, "2026-03-01");
+      assert.equal(normalized[1].transactionDate, "2026-03-15");
+      assert.equal(normalized[2].transactionDate, "2026-03-31");
+
+      const prog = validateBalanceProgression(normalized, "1000000.00", "1235000.00");
+      assert.equal(prog.status, "VALID");
+      assert.equal(prog.consecutiveMismatches, 0);
     });
   });
 

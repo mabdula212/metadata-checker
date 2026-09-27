@@ -4,7 +4,7 @@ import type {
   TransactionExtractionValidation,
   ExtractionStatus,
 } from "./types.js";
-import { validateBalanceProgression } from "./utils/balance-parser.js";
+import { validateBalanceProgression, toCents, formatCents } from "./utils/balance-parser.js";
 
 export interface ValidationInput {
   transactions: ParsedTransaction[];
@@ -70,11 +70,29 @@ export function validateExtractionResult(input: ValidationInput): {
     lastTransactionDate = transactions[transactions.length - 1].transactionDate;
   }
 
+  // Derive effective opening and closing balances if missing from summary block
+  let effectiveOpeningBalance = sourceOpeningBalance;
+  let effectiveClosingBalance = sourceClosingBalance;
+
+  if (transactions.length > 0) {
+    if (!effectiveOpeningBalance && transactions[0].balance) {
+      const firstTx = transactions[0];
+      const balCents = toCents(firstTx.balance);
+      const crCents = toCents(firstTx.credit);
+      const dbCents = toCents(firstTx.debit);
+      const openCents = balCents - crCents + dbCents;
+      effectiveOpeningBalance = formatCents(openCents);
+    }
+    if (!effectiveClosingBalance && transactions[transactions.length - 1].balance) {
+      effectiveClosingBalance = transactions[transactions.length - 1].balance;
+    }
+  }
+
   // Balance progression validation
   const balanceCheck = validateBalanceProgression(
     transactions,
-    sourceOpeningBalance,
-    sourceClosingBalance
+    effectiveOpeningBalance,
+    effectiveClosingBalance
   );
 
   warnings.push(...balanceCheck.warnings);
@@ -108,8 +126,8 @@ export function validateExtractionResult(input: ValidationInput): {
       lastTransactionDate,
       calculatedCredits: balanceCheck.calculatedTotalCredit,
       calculatedDebits: balanceCheck.calculatedTotalDebit,
-      sourceOpeningBalance,
-      sourceClosingBalance,
+      sourceOpeningBalance: effectiveOpeningBalance,
+      sourceClosingBalance: effectiveClosingBalance,
       balanceReconciliationStatus: balanceCheck.status,
       warnings,
     },
