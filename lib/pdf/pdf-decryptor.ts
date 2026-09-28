@@ -31,6 +31,24 @@ export interface PdfEncryptionInfo {
   errorMessage?: string;
 }
 
+export interface ProcessedPdf {
+  originalBytes: Uint8Array;
+  analysisBytes: Uint8Array;
+  wasEncrypted: boolean;
+}
+
+export function createProcessedPdf(
+  originalBytes: Uint8Array,
+  analysisBytes: Uint8Array,
+  wasEncrypted: boolean
+): ProcessedPdf {
+  return {
+    originalBytes,
+    analysisBytes,
+    wasEncrypted,
+  };
+}
+
 export interface DecryptPdfResult {
   success: boolean;
   decryptedBytes?: Uint8Array;
@@ -38,32 +56,109 @@ export interface DecryptPdfResult {
   securityState: PdfSecurityState;
   error?: string;
   algorithm?: string;
+  extractedText?: {
+    totalPages: number;
+    pages: Array<{ pageNumber: number; text: string; characterCount: number }>;
+    fullText: string;
+    isScannedOrImageOnly: boolean;
+    totalCharacterCount: number;
+  };
 }
 
-// In-memory cache for decrypted buffers during multi-step processing (5 minute TTL)
+// In-memory cache for decrypted buffers during multi-step processing (10 minute TTL)
 // Allows /api/bank-detection and /api/transaction-extraction to execute in-memory
 // without permanently saving decrypted copies to disk or storage.
 interface CachedDecryptedEntry {
   buffer: Buffer;
+  bytes: Uint8Array;
+  fileHash?: string;
+  storageKey?: string;
+  wasEncrypted?: boolean;
+  extractedText?: {
+    totalPages: number;
+    pages: Array<{ pageNumber: number; text: string; characterCount: number }>;
+    fullText: string;
+    isScannedOrImageOnly: boolean;
+    totalCharacterCount: number;
+  };
   expiresAt: number;
 }
 const decryptedBufferCache = new Map<string, CachedDecryptedEntry>();
 
-export function storeDecryptedBuffer(documentId: string, buffer: Buffer): void {
-  decryptedBufferCache.set(documentId, {
+export function storeDecryptedBuffer(
+  idOrKey: string,
+  buffer: Buffer,
+  options?: {
+    fileHash?: string;
+    storageKey?: string;
+    bytes?: Uint8Array;
+    wasEncrypted?: boolean;
+    extractedText?: {
+      totalPages: number;
+      pages: Array<{ pageNumber: number; text: string; characterCount: number }>;
+      fullText: string;
+      isScannedOrImageOnly: boolean;
+      totalCharacterCount: number;
+    };
+  }
+): void {
+  const bytes = options?.bytes || new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  const entry: CachedDecryptedEntry = {
     buffer,
-    expiresAt: Date.now() + 5 * 60 * 1000,
-  });
+    bytes,
+    fileHash: options?.fileHash,
+    storageKey: options?.storageKey,
+    wasEncrypted: options?.wasEncrypted ?? true,
+    extractedText: options?.extractedText,
+    expiresAt: Date.now() + 10 * 60 * 1000,
+  };
+  decryptedBufferCache.set(idOrKey, entry);
+  if (options?.fileHash) {
+    decryptedBufferCache.set(options.fileHash, entry);
+  }
+  if (options?.storageKey) {
+    decryptedBufferCache.set(options.storageKey, entry);
+  }
 }
 
-export function getDecryptedBuffer(documentId: string): Buffer | null {
-  const entry = decryptedBufferCache.get(documentId);
+export function getDecryptedBuffer(idOrHash: string): Buffer | null {
+  const entry = decryptedBufferCache.get(idOrHash);
   if (!entry) return null;
   if (Date.now() > entry.expiresAt) {
-    decryptedBufferCache.delete(documentId);
+    decryptedBufferCache.delete(idOrHash);
     return null;
   }
   return entry.buffer;
+}
+
+export function getDecryptedBytes(idOrHash: string): Uint8Array | null {
+  const entry = decryptedBufferCache.get(idOrHash);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    decryptedBufferCache.delete(idOrHash);
+    return null;
+  }
+  return entry.bytes;
+}
+
+export function getDecryptedExtractedText(idOrHash: string) {
+  const entry = decryptedBufferCache.get(idOrHash);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    decryptedBufferCache.delete(idOrHash);
+    return null;
+  }
+  return entry.extractedText || null;
+}
+
+export function isDecryptedDocument(idOrHash: string): boolean {
+  const entry = decryptedBufferCache.get(idOrHash);
+  if (!entry) return false;
+  if (Date.now() > entry.expiresAt) {
+    decryptedBufferCache.delete(idOrHash);
+    return false;
+  }
+  return Boolean(entry.wasEncrypted);
 }
 
 export function clearDecryptedBuffer(documentId: string): void {
@@ -310,11 +405,11 @@ function validatePasswordRev234(
   }
   const ownerDecryptKey = new Uint8Array(oHash.subarray(0, keyLengthBytes));
 
-  let recoveredUserPwd: Uint8Array;
+  let recoveredUserPwd: any;
   if (revision === 2) {
     recoveredUserPwd = new PdfRC4(ownerDecryptKey).process(ownerKey.subarray(0, 32));
   } else {
-    let res = new Uint8Array(ownerKey.subarray(0, 32));
+    let res: any = new Uint8Array(ownerKey.subarray(0, 32));
     for (let i = 19; i >= 0; i--) {
       const iterKey = new Uint8Array(ownerDecryptKey.length);
       for (let k = 0; k < ownerDecryptKey.length; k++) {
@@ -474,6 +569,8 @@ export async function decryptPdf(
     try {
       const rawDecryptedBytes = await decryptPDF(bytes, candidate);
       console.log("[PDF_SECURITY] decryption completed");
+      console.log("[PDF_PIPELINE] password validated");
+      console.log("[PDF_PIPELINE] PDF decrypted");
 
       let normalizedBytes = rawDecryptedBytes;
       try {
@@ -481,6 +578,7 @@ export async function decryptPdf(
       } catch {
         // Fallback to raw decrypted bytes
       }
+      console.log("[PDF_PIPELINE] normalized bytes available");
 
       const decryptedBuffer = Buffer.from(
         normalizedBytes.buffer,
@@ -524,7 +622,7 @@ export async function decryptPdf(
         const EncryptMetadata = encryptDict.get(PDFName.of("EncryptMetadata"));
         const encryptMeta = EncryptMetadata ? EncryptMetadata.toString() !== "false" : true;
 
-        let fileId = new Uint8Array(0);
+        let fileId: any = new Uint8Array(0);
         const idArr = trailer?.ID;
         if (Array.isArray(idArr) && idArr.length > 0) {
           fileId = extractPdfBytes(idArr[0]) || new Uint8Array(0);
@@ -581,7 +679,7 @@ export async function decryptPdf(
                         decipher.update(ciphertext),
                         decipher.final(),
                       ]);
-                      obj.contents = new Uint8Array(decryptedStream);
+                      (obj as any).contents = new Uint8Array(decryptedStream);
                     } catch {
                       // Fallback to original if stream unencrypted
                     }
@@ -597,8 +695,11 @@ export async function decryptPdf(
 
             const saved = await pdfDoc.save({ useObjectStreams: false });
             console.log("[PDF_SECURITY] AES-128 decryption completed");
+            console.log("[PDF_PIPELINE] password validated");
+            console.log("[PDF_PIPELINE] PDF decrypted");
 
             const normalizedBytes = await normalizePdf(saved);
+            console.log("[PDF_PIPELINE] normalized bytes available");
             const decryptedBuffer = Buffer.from(
               normalizedBytes.buffer,
               normalizedBytes.byteOffset,
@@ -625,6 +726,7 @@ export async function decryptPdf(
   if (verifiedPassword !== null && unpdfDoc) {
     try {
       console.log("[PDF_SECURITY] synthesizing unencrypted document from unlocked PDF.js proxy");
+      console.log("[PDF_PIPELINE] password validated");
       const { text: pageTexts } = await extractText(unpdfDoc, { mergePages: false });
       const meta = await getMeta(unpdfDoc).catch(() => null);
 
@@ -639,28 +741,44 @@ export async function decryptPdf(
 
       const font = await reconstructedDoc.embedFont(StandardFonts.Helvetica);
       const textsArray = Array.isArray(pageTexts) ? pageTexts : [pageTexts];
+      const pages = textsArray.map((t, idx) => ({
+        pageNumber: idx + 1,
+        text: (t || "").trim(),
+        characterCount: (t || "").trim().length,
+      }));
+      const fullText = pages.map((p) => p.text).join("\n\n--- PAGE BREAK ---\n\n");
+      const totalNonWhitespace = pages.reduce(
+        (acc, p) => acc + p.text.replace(/\s+/g, "").length,
+        0
+      );
+      const isScannedOrImageOnly =
+        pages.length > 0 &&
+        (totalNonWhitespace === 0 || totalNonWhitespace / pages.length < 25);
 
-      for (let i = 0; i < Math.max(unpdfDoc.numPages, textsArray.length); i++) {
-        const page = reconstructedDoc.addPage([595, 842]);
+      // Create exactly 1 page per original page so pageCount matches exactly
+      const numTargetPages = Math.max(unpdfDoc.numPages, textsArray.length);
+      for (let i = 0; i < numTargetPages; i++) {
+        const currentPage = reconstructedDoc.addPage([595, 842]);
         const text = textsArray[i] || "";
-        const lines = text.split("\n").slice(0, 60);
+        const lines = text.split("\n");
         let y = 800;
         for (const line of lines) {
-          const safeLine = line.replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim();
-          if (safeLine.length > 0 && y > 30) {
+          if (y < 30) break; // Keep within single page boundaries
+          const safeLine = line.replace(/[\x00-\x1F\x7F-\x9F]/g, " ").trim();
+          if (safeLine.length > 0) {
             try {
-              page.drawText(safeLine.substring(0, 110), {
+              currentPage.drawText(safeLine.substring(0, 180), {
                 x: 40,
                 y,
-                size: 9,
+                size: 8,
                 font,
                 color: rgb(0, 0, 0),
               });
             } catch {
               // Ignore non-printable character drawing issues
             }
+            y -= 11;
           }
-          y -= 12;
         }
       }
 
@@ -668,12 +786,21 @@ export async function decryptPdf(
       const decryptedBuffer = Buffer.from(synthesizedBytes);
 
       console.log("[PDF_SECURITY] unencrypted PDF reconstructed successfully");
+      console.log("[PDF_PIPELINE] PDF decrypted");
+      console.log("[PDF_PIPELINE] normalized bytes available");
       return {
         success: true,
         decryptedBytes: synthesizedBytes,
         decryptedBuffer,
         securityState: "PASSWORD_PROTECTED",
         algorithm: detection.algorithm || "PASSWORD_UNLOCKED",
+        extractedText: {
+          totalPages: pages.length,
+          pages,
+          fullText,
+          isScannedOrImageOnly,
+          totalCharacterCount: totalNonWhitespace,
+        },
       };
     } catch (err: unknown) {
       console.warn("[PDF_SECURITY] tier C reconstruction warning:", err);
@@ -700,5 +827,10 @@ export async function normalizePdf(decryptedBytes: Uint8Array): Promise<Uint8Arr
     ignoreEncryption: true,
     updateMetadata: false,
   });
-  return await pdfDoc.save();
+  const context = pdfDoc.context;
+  const trailer = (context as unknown as { trailerInfo?: Record<string, unknown> }).trailerInfo;
+  if (trailer && trailer.Encrypt) {
+    delete trailer.Encrypt;
+  }
+  return await pdfDoc.save({ useObjectStreams: false });
 }

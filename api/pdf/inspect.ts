@@ -12,8 +12,15 @@ import {
   detectEncryption,
   decryptPdf,
   storeDecryptedBuffer,
+  createProcessedPdf,
+  type ProcessedPdf,
+  type DecryptPdfResult,
 } from "../../lib/pdf/pdf-decryptor.js";
-import { processAndSaveDocument } from "../../lib/db/documents.js";
+import {
+  processAndSaveDocument,
+  runBankDetectionOnDocument,
+  runTransactionExtractionOnDocument,
+} from "../../lib/db/documents.js";
 import { requireAuth, logAuditEvent } from "../../lib/auth/index.js";
 import { assertStorageConfigured } from "../../lib/storage/index.js";
 
@@ -222,6 +229,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   try {
     console.log("[PDF_INSPECT] request received");
+    console.log("[PDF_PIPELINE] original PDF received");
 
     // 1. Parse and extract uploaded file & optional password
     const { fileName, buffer, bytes, password } = await parseRequestPayload(req);
@@ -256,12 +264,13 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       return;
     }
 
-    let processingBuffer = buffer;
-    let processingBytes = bytes;
     let isEncryptedDoc = false;
+    let decryptResult: DecryptPdfResult | null = null;
+    let processedPdf: ProcessedPdf;
 
     if (encryptionDetection.securityState === "PASSWORD_PROTECTED") {
       isEncryptedDoc = true;
+      console.log("[PDF_PIPELINE] encrypted PDF detected");
 
       // If user has not yet supplied a password, prompt for it
       if (!password || password.trim().length === 0) {
@@ -279,8 +288,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       }
 
       // Decrypt PDF in-memory
-      const decryptResult = await decryptPdf(bytes || buffer, password);
-      if (!decryptResult.success) {
+      decryptResult = await decryptPdf(bytes || buffer, password);
+      if (!decryptResult.success || !decryptResult.decryptedBytes) {
         res.statusCode = 422;
         res.end(
           JSON.stringify({
@@ -294,14 +303,22 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         return;
       }
 
-      processingBytes = decryptResult.decryptedBytes!;
-      processingBuffer = decryptResult.decryptedBuffer!;
+      // Canonical ProcessedPdf: encrypted PDF was decrypted
+      processedPdf = createProcessedPdf(bytes, decryptResult.decryptedBytes, true);
+    } else {
+      // Canonical ProcessedPdf: unencrypted PDF
+      processedPdf = createProcessedPdf(bytes, bytes, false);
     }
 
     // 3. Perform server-side metadata inspection and validation
     // Computes original file hash from the original uploaded file (encrypted)
-    const originalFileHash = calculateFileHash(bytes || buffer);
-    const extractedMetadata = await inspectPdfMetadata(processingBytes || processingBuffer);
+    const originalFileHash = calculateFileHash(processedPdf.originalBytes);
+
+    // Metadata inspection receives analysisBytes (decrypted bytes)
+    console.log("[PDF_PIPELINE] metadata inspection input = decrypted bytes");
+    const extractedMetadata = await inspectPdfMetadata(processedPdf.analysisBytes, {
+      originalFileHash,
+    });
 
     // Ensure original file hash remains associated with the uploaded document
     extractedMetadata.fileHash = originalFileHash;
@@ -324,12 +341,69 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     });
 
     // If document was encrypted and successfully decrypted, store in-memory buffer
-    // so downstream bank-detection and transaction-extraction can run without re-decrypting
+    // indexed by documentId, storageKey, and fileHash so downstream operations can use it
     if (isEncryptedDoc) {
-      storeDecryptedBuffer(result.document.id, processingBuffer);
+      storeDecryptedBuffer(result.document.id, Buffer.from(processedPdf.analysisBytes), {
+        fileHash: originalFileHash,
+        storageKey: result.document.storageKey,
+        bytes: processedPdf.analysisBytes,
+        wasEncrypted: true,
+        extractedText: decryptResult?.extractedText,
+      });
     }
 
-    // 5. Record audit event
+    // 5. Run Bank Detection in the same server-side workflow (Preferred by Instruction 6)
+    console.log("[PDF_PIPELINE] bank detection input = decrypted bytes");
+    let bankDetectionResult: Awaited<ReturnType<typeof runBankDetectionOnDocument>> | null = null;
+    let bankDetectionStatus: "SUCCESS" | "FAILED" = "FAILED";
+
+    try {
+      bankDetectionResult = await runBankDetectionOnDocument(
+        result.document.id,
+        Buffer.from(processedPdf.analysisBytes)
+      );
+      if (bankDetectionResult && bankDetectionResult.detection) {
+        bankDetectionStatus = "SUCCESS";
+      }
+    } catch (bankErr: unknown) {
+      console.warn(
+        "[PDF_PIPELINE] bank detection non-fatal error:",
+        bankErr instanceof Error ? bankErr.message : "Bank detection error"
+      );
+    }
+
+    // 6. Run Transaction Extraction if classified as BANK_STATEMENT
+    let txExtractionResult: Awaited<ReturnType<typeof runTransactionExtractionOnDocument>> | null = null;
+    let txExtractionStatus: "SUCCESS" | "PARTIAL" | "FAILED" = "FAILED";
+
+    const isBankStatement =
+      bankDetectionResult?.detection?.documentType === "BANK_STATEMENT" ||
+      bankDetectionResult?.document?.documentType === "BANK_STATEMENT";
+
+    if (isBankStatement && !bankDetectionResult?.detection?.isScannedOrImageOnly) {
+      console.log("[PDF_PIPELINE] transaction extraction input = decrypted bytes");
+      try {
+        txExtractionResult = await runTransactionExtractionOnDocument(
+          result.document.id,
+          Buffer.from(processedPdf.analysisBytes)
+        );
+        if (txExtractionResult) {
+          txExtractionStatus =
+            txExtractionResult.status === "COMPLETED"
+              ? "SUCCESS"
+              : txExtractionResult.status === "NEEDS_REVIEW"
+              ? "PARTIAL"
+              : "FAILED";
+        }
+      } catch (txErr: unknown) {
+        console.warn(
+          "[PDF_PIPELINE] transaction extraction non-fatal error:",
+          txErr instanceof Error ? txErr.message : "Extraction error"
+        );
+      }
+    }
+
+    // 7. Record audit event
     await logAuditEvent({
       userId: authUser.id,
       action: "DOCUMENT_UPLOADED",
@@ -341,9 +415,12 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         isDuplicate: result.isDuplicate,
         isEncrypted: isEncryptedDoc,
         securityState: encryptionDetection.securityState,
+        bankDetected: bankDetectionResult?.statement?.bankName || null,
+        transactionCount: txExtractionResult?.transactions?.length ?? 0,
       },
     });
 
+    // 8. Deliver unified response with independent engine results (Instruction 8 & 9)
     res.statusCode = 200;
     res.end(
       JSON.stringify({
@@ -354,10 +431,31 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         message: result.isDuplicate
           ? "This PDF has already been analyzed."
           : "PDF metadata successfully extracted and saved.",
+        engineResults: {
+          metadata: {
+            status: extractedMetadata.metadataStatus, // "SUCCESS" | "PARTIAL" | "FAILED"
+            pageCount: extractedMetadata.pageCount,
+          },
+          bankDetection: {
+            status: bankDetectionStatus,
+            bank: bankDetectionResult?.detection?.bankCode || null,
+            bankName: bankDetectionResult?.statement?.bankName || bankDetectionResult?.detection?.bankName || null,
+          },
+          transactionExtraction: {
+            status: txExtractionStatus,
+            transactionCount: txExtractionResult?.transactions?.length ?? 0,
+            needsReview: txExtractionResult?.reviewRows?.length ?? 0,
+          },
+        },
         data: {
-          document: result.document,
+          document: bankDetectionResult?.document
+            ? { ...result.document, ...bankDetectionResult.document }
+            : result.document,
           metadata: result.metadata,
           job: result.job,
+          detection: bankDetectionResult?.detection ?? null,
+          statement: bankDetectionResult?.statement ?? null,
+          extraction: txExtractionResult ?? null,
         },
       })
     );

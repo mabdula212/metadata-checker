@@ -16,6 +16,7 @@ export interface ExtractedPdfMetadata {
   pdfVersion: string | null;
   pageCount: number;
   fileHash: string;
+  metadataStatus?: "SUCCESS" | "PARTIAL" | "FAILED";
   rawMetadataJson: Record<string, unknown>;
 }
 
@@ -199,7 +200,11 @@ function countPagesFromRawBytes(input: Uint8Array): number {
  * 5. Uses unpdf with an isolated byte copy if enrichment/fallback is needed.
  * 6. Guarantees that neither caller nor downstream operations encounter a detached ArrayBuffer.
  */
-export async function inspectPdfMetadata(input: Buffer | Uint8Array): Promise<ExtractedPdfMetadata> {
+export async function inspectPdfMetadata(
+  input: Buffer | Uint8Array,
+  options?: { originalFileHash?: string }
+): Promise<ExtractedPdfMetadata> {
+  console.log("[PDF_PIPELINE] metadata inspection input = decrypted bytes");
   // 1. Create stable independent byte copy
   const stableBytes = createStableByteCopy(input);
 
@@ -210,8 +215,8 @@ export async function inspectPdfMetadata(input: Buffer | Uint8Array): Promise<Ex
   }
   console.log("[PDF_INSPECT] PDF magic validated");
 
-  // 3. Calculate SHA-256 checksum from an independent copy
-  const fileHash = calculateFileHash(stableBytes);
+  // 3. Calculate SHA-256 checksum from an independent copy or use original file hash
+  const fileHash = options?.originalFileHash || calculateFileHash(stableBytes);
   console.log("[PDF_INSPECT] SHA-256 calculated");
 
   let pdfVersion = extractPdfVersion(stableBytes);
@@ -298,6 +303,21 @@ export async function inspectPdfMetadata(input: Buffer | Uint8Array): Promise<Ex
     throw new Error("Invalid PDF: The document contains 0 readable pages or has an unrecoverable structure.");
   }
 
+  // Determine metadata completeness status
+  const hasSubstantialMeta = Boolean(
+    rawTitle || rawAuthor || rawCreator || rawProducer || rawCreationDate
+  );
+  const metadataStatus: "SUCCESS" | "PARTIAL" | "FAILED" = pageCount > 0
+    ? hasSubstantialMeta
+      ? "SUCCESS"
+      : "PARTIAL"
+    : "FAILED";
+
+  const partialExplanation =
+    metadataStatus === "PARTIAL"
+      ? "Dokumen PDF berhasil dibuka dan diverifikasi. Metadata parsial: atribut Title/Author tidak didefinisikan secara eksplisit oleh sistem perbankan pembuat dokumen."
+      : undefined;
+
   // Build raw JSON payload for audit/debugging
   const rawMetadataJson: Record<string, unknown> = {
     title: rawTitle,
@@ -311,6 +331,8 @@ export async function inspectPdfMetadata(input: Buffer | Uint8Array): Promise<Ex
     pageCount,
     fileSizeBytes: stableBytes.length,
     fileHash,
+    metadataStatus,
+    explanation: partialExplanation,
     extraInfo: unpdfMetaInfo ?? undefined,
   };
 
@@ -325,6 +347,7 @@ export async function inspectPdfMetadata(input: Buffer | Uint8Array): Promise<Ex
     pdfVersion,
     pageCount,
     fileHash,
+    metadataStatus,
     rawMetadataJson,
   };
 }

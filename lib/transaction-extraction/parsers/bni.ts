@@ -29,6 +29,16 @@ export class BniTransactionParser implements BankTransactionParser {
     const reviewRows: ReviewRow[] = [];
     let totalRowsDetected = 0;
 
+    const bniSignalsDetected =
+      input.bankCode === "BNI" ||
+      input.fullText.toUpperCase().includes("BNI") ||
+      input.fullText.toUpperCase().includes("BANK NEGARA INDONESIA");
+
+    console.log("[BNI_PIPELINE] decrypted PDF available");
+    console.log(`[BNI_PIPELINE] page count = ${input.pages.length}`);
+    console.log("[BNI_PIPELINE] text extraction completed");
+    console.log(`[BNI_PIPELINE] BNI signals detected = ${bniSignalsDetected}`);
+
     const { openingBalance, closingBalance } = extractStatementBalances(input.fullText);
 
     for (const page of input.pages) {
@@ -57,8 +67,10 @@ export class BniTransactionParser implements BankTransactionParser {
 
         // Check for 3 trailing amounts: DEBET, KREDIT, SALDO
         const threeAmounts = line.match(/([0-9.,]+)\s+([0-9.,]+)\s+([0-9.,]+)$/);
-        // Fallback: 2 trailing amounts (MUTASI, SALDO)
+        // Fallback A: 2 trailing amounts with indicator in middle (MUTASI, [CR|DB], SALDO)
         const twoAmounts = line.match(/([0-9.,]+)\s*(CR|DB|DR)?\s+([0-9.,]+)$/i);
+        // Fallback B: 2 trailing amounts with indicator at end (MUTASI, SALDO, [CR|DB])
+        const twoAmountsSuffix = line.match(/([0-9.,]+)\s+([0-9.,]+)\s*(CR|DB|DR)$/i);
 
         if (threeAmounts) {
           const rawDebet = threeAmounts[1];
@@ -101,6 +113,47 @@ export class BniTransactionParser implements BankTransactionParser {
             transactionType: deriveTransactionType(description, isCredit, isDebit),
             confidence: "HIGH",
             confidenceReasons: ["BNI 3-column match"],
+            pageNumber: page.pageNumber,
+            rawText: cand.allText,
+          });
+        } else if (twoAmountsSuffix) {
+          const rawMutasi = twoAmountsSuffix[1];
+          const rawSaldo = twoAmountsSuffix[2];
+          const rawFlag = (twoAmountsSuffix[3] || "").toUpperCase();
+
+          const parsedMutasi = parseFinancialAmount(rawMutasi);
+          const parsedSaldo = parseFinancialAmount(rawSaldo);
+
+          if (!parsedMutasi || !parsedSaldo) {
+            reviewRows.push({
+              pageNumber: page.pageNumber,
+              rawSourceText: cand.allText,
+              reason: "AMBIGUOUS_AMOUNT",
+              extractedFields: { rawMutasi, rawSaldo },
+            });
+            continue;
+          }
+
+          const matchIndex = line.lastIndexOf(twoAmountsSuffix[0]);
+          const leadDesc = line.slice(0, matchIndex).trim();
+
+          const fullRawDesc = [leadDesc, ...cand.continuationLines].join("\n");
+          const description = cleanTransactionDescription(fullRawDesc);
+
+          const isCredit = rawFlag === "CR" || parsedMutasi.indicator === "CR";
+          const isDebit = !isCredit;
+
+          transactions.push({
+            transactionDate: isoDate,
+            rawDate: cand.dateStr,
+            description,
+            referenceNumber: extractReferenceNumber(fullRawDesc),
+            debit: isDebit ? parsedMutasi.value : null,
+            credit: isCredit ? parsedMutasi.value : null,
+            balance: parsedSaldo.value,
+            transactionType: deriveTransactionType(description, isCredit, isDebit),
+            confidence: "HIGH",
+            confidenceReasons: ["BNI 2-column match with suffix indicator"],
             pageNumber: page.pageNumber,
             rawText: cand.allText,
           });
@@ -155,6 +208,10 @@ export class BniTransactionParser implements BankTransactionParser {
         }
       }
     }
+
+    console.log(`[BNI_PIPELINE] candidate transaction rows = ${totalRowsDetected}`);
+    console.log(`[BNI_PIPELINE] parsed transactions = ${transactions.length}`);
+    console.log(`[BNI_PIPELINE] needs review = ${reviewRows.length}`);
 
     return {
       transactions,

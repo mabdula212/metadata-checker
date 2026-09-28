@@ -57,9 +57,12 @@ export function MetadataResultCard({
     }
   };
 
-  // Safely extract PDF version from rawMetadataJson
+  // Safely extract PDF version and metadata status from rawMetadataJson
   const rawObj = (metadata.rawMetadataJson as Record<string, unknown>) || {};
   const pdfVersion = typeof rawObj.pdfVersion === "string" ? rawObj.pdfVersion : null;
+  const metadataStatus = typeof rawObj.metadataStatus === "string" ? rawObj.metadataStatus : "SUCCESS";
+  const isPartial = metadataStatus === "PARTIAL" || (!metadata.title && !metadata.author && metadata.pageCount && metadata.pageCount > 0);
+  const explanation = typeof rawObj.explanation === "string" ? rawObj.explanation : null;
 
   const metadataFields = [
     { label: "Title", value: metadata.title },
@@ -91,6 +94,22 @@ export function MetadataResultCard({
         </div>
       )}
 
+      {/* Partial Metadata Notice */}
+      {isPartial && (
+        <div
+          role="status"
+          className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 text-amber-900 flex items-start gap-2.5 text-xs"
+        >
+          <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <span className="font-semibold text-amber-950">Partial Metadata Available: </span>
+            <span className="text-amber-900/90">
+              {explanation || "Dokumen PDF berhasil dibuka dan halaman terbaca. Atribut judul/penulis tidak didefinisikan secara eksplisit oleh sistem generator bank."}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Header section */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-neutral-100">
         <div className="flex items-center gap-3">
@@ -102,9 +121,15 @@ export function MetadataResultCard({
               <h2 className="text-lg sm:text-xl font-extrabold text-neutral-950 tracking-tight">
                 METADATA RESULT
               </h2>
-              <span className="text-[10px] font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200 uppercase tracking-wide">
-                Verified PDF
-              </span>
+              {isPartial ? (
+                <span className="text-[10px] font-semibold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full border border-amber-300 uppercase tracking-wide">
+                  Verified PDF (Partial Metadata)
+                </span>
+              ) : (
+                <span className="text-[10px] font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200 uppercase tracking-wide">
+                  Verified PDF
+                </span>
+              )}
             </div>
             <p className="text-xs text-neutral-500 mt-0.5">
               Inspected on {formatDate(metadata.createdAt || document.createdAt)}

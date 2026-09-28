@@ -1,5 +1,6 @@
 import { extractText, getDocumentProxy } from "unpdf";
 import { createStableByteCopy } from "./pdf-inspector.js";
+import { getDecryptedExtractedText } from "./pdf-decryptor.js";
 
 export interface ExtractedPdfPage {
   pageNumber: number;
@@ -21,14 +22,29 @@ export interface PdfTextExtractionResult {
  * Detects whether the PDF is likely scanned or image-only (zero or negligible selectable text).
  */
 export async function extractPdfText(
-  pdfBuffer: Buffer | Uint8Array
+  pdfBuffer: Buffer | Uint8Array,
+  options?: {
+    documentId?: string;
+    password?: string | null;
+  }
 ): Promise<PdfTextExtractionResult> {
+  // Check if high-fidelity text was already extracted during decryption
+  if (options?.documentId) {
+    const cachedText = getDecryptedExtractedText(options.documentId);
+    if (cachedText) {
+      return cachedText;
+    }
+  }
+
   try {
     // Always create an isolated, dedicated Uint8Array copy so unpdf cannot detach caller's buffer
     const uint8Array = createStableByteCopy(pdfBuffer);
 
     // Load PDF document using unpdf (pure JS, safe in Node & serverless runtimes)
-    const pdf = await getDocumentProxy(uint8Array);
+    const pdf = await getDocumentProxy(
+      uint8Array,
+      options?.password ? { password: options.password } : undefined
+    );
     const numPages = pdf.numPages;
 
     // Extract text per page without merging

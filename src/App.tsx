@@ -568,34 +568,54 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
       setPasswordError(null);
       setIsPasswordProtected(false);
 
-      // Detecting Bank & Statement Period
-      setProcessingStage("DETECTING");
-      const detectionRes = await safeApiFetch<BankDetectionApiResponse>("/api/bank-detection", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          documentId: inspectData.document.id,
-        }),
-      });
+      // Check if server-side pipeline already completed bank detection & transaction extraction
+      const serverDetection = (inspectData as unknown as { detection?: BankDetectionResultUi | null }).detection;
+      const serverExtraction = (inspectData as unknown as { extraction?: any }).extraction;
 
-      // Saving result & Extracting Transactions
-      setProcessingStage("SAVING");
-      if (detectionRes.ok && detectionRes.data?.success && detectionRes.data?.detection) {
-        setBankDetectionResult(detectionRes.data.detection);
-
-        // If detected as a text-based bank statement, automatically extract transactions
-        if (
-          detectionRes.data.detection.documentType === "BANK_STATEMENT" &&
-          !detectionRes.data.detection.isScannedOrImageOnly
-        ) {
-          setProcessingStage("EXTRACTING_TRANSACTIONS");
-          await triggerTransactionExtraction(inspectData.document.id);
+      if (serverDetection) {
+        setBankDetectionResult(serverDetection);
+        if (serverExtraction) {
+          setTransactionExtractionResult({
+            documentId: serverExtraction.documentId,
+            statementId: serverExtraction.statementId,
+            status: serverExtraction.status,
+            summary: serverExtraction.summary,
+            transactions: serverExtraction.transactions || [],
+            reviewRows: serverExtraction.reviewRows || [],
+            validation: serverExtraction.validation,
+            warning: serverExtraction.warning,
+          });
         }
       } else {
-        setBankDetectionResult(null);
+        // Fallback: Detect Bank & Statement Period via separate API call
+        setProcessingStage("DETECTING");
+        const detectionRes = await safeApiFetch<BankDetectionApiResponse>("/api/bank-detection", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            documentId: inspectData.document.id,
+          }),
+        });
+
+        // Saving result & Extracting Transactions
+        setProcessingStage("SAVING");
+        if (detectionRes.ok && detectionRes.data?.success && detectionRes.data?.detection) {
+          setBankDetectionResult(detectionRes.data.detection);
+
+          // If detected as a text-based bank statement, automatically extract transactions
+          if (
+            detectionRes.data.detection.documentType === "BANK_STATEMENT" &&
+            !detectionRes.data.detection.isScannedOrImageOnly
+          ) {
+            setProcessingStage("EXTRACTING_TRANSACTIONS");
+            await triggerTransactionExtraction(inspectData.document.id);
+          }
+        } else {
+          setBankDetectionResult(null);
+        }
       }
 
-      // Completed
+      // Completed - always set active result so metadata and analysis are visible
       setProcessingStage("COMPLETED");
       setActiveResult({
         document: inspectData.document,

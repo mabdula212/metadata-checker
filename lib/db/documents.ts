@@ -121,6 +121,7 @@ export interface SaveDocumentResult {
     storedFileName: string;
     mimeType: string;
     fileSize: number;
+    storageKey?: string;
     status: string;
     documentType: string;
     createdAt: Date;
@@ -175,10 +176,33 @@ export async function processAndSaveDocument(
     documentBufferCache.set(existing.document.id, duplicateCopy);
     documentBufferCache.set(existing.document.storageKey, duplicateCopy);
 
+    // Update existing metadata if new metadata has enriched fields (e.g. after decryption)
+    let finalMetadata: any = existing.metadata;
+    if (extractedMetadata && existing.metadata) {
+      try {
+        finalMetadata = await prisma.documentMetadata.update({
+          where: { id: existing.metadata.id },
+          data: {
+            title: extractedMetadata.title ?? existing.metadata.title,
+            author: extractedMetadata.author ?? existing.metadata.author,
+            subject: extractedMetadata.subject ?? existing.metadata.subject,
+            creator: extractedMetadata.creator ?? existing.metadata.creator,
+            producer: extractedMetadata.producer ?? existing.metadata.producer,
+            creationDate: extractedMetadata.creationDate ?? existing.metadata.creationDate,
+            modificationDate: extractedMetadata.modificationDate ?? existing.metadata.modificationDate,
+            pageCount: extractedMetadata.pageCount || existing.metadata.pageCount,
+            rawMetadataJson: (extractedMetadata.rawMetadataJson as any) || (existing.metadata.rawMetadataJson as any),
+          },
+        });
+      } catch {
+        // Fallback to existing
+      }
+    }
+
     return {
       isDuplicate: true,
       document: existing.document,
-      metadata: existing.metadata,
+      metadata: finalMetadata,
     };
   }
 
@@ -354,9 +378,16 @@ export async function runBankDetectionOnDocument(
 
   // 2. Retrieve document buffer via in-memory decrypted cache, directBuffer, or canonical getDocumentPdf
   let buffer: Buffer;
-  const cachedDecrypted = getDecryptedBuffer(documentId);
+  let isKnownDecrypted = false;
+  const cachedDecrypted =
+    getDecryptedBuffer(documentId) ||
+    (document.storageKey ? getDecryptedBuffer(document.storageKey) : null) ||
+    (document.metadata?.fileHash ? getDecryptedBuffer(document.metadata.fileHash) : null);
+
   if (cachedDecrypted) {
     buffer = cachedDecrypted;
+    isKnownDecrypted = true;
+    console.log("[PDF_PIPELINE] bank detection input = decrypted bytes");
   } else if (directBuffer && isPdfBuffer(directBuffer)) {
     buffer = directBuffer;
   } else {
@@ -364,19 +395,27 @@ export async function runBankDetectionOnDocument(
     buffer = retrieved.buffer;
   }
 
-  // If buffer is encrypted, decrypt using password if provided
-  const encDetection = await detectEncryption(buffer);
-  if (encDetection.isEncrypted) {
-    if (password && password.trim().length > 0) {
-      const decRes = await decryptPdf(buffer, password);
-      if (decRes.success && decRes.decryptedBuffer) {
-        buffer = decRes.decryptedBuffer;
-        storeDecryptedBuffer(documentId, buffer);
+  // If buffer is NOT already decrypted, decrypt using password if provided
+  if (!isKnownDecrypted) {
+    const encDetection = await detectEncryption(buffer);
+    if (encDetection.isEncrypted) {
+      if (password && password.trim().length > 0) {
+        const decRes = await decryptPdf(buffer, password);
+        if (decRes.success && decRes.decryptedBuffer) {
+          buffer = decRes.decryptedBuffer;
+          storeDecryptedBuffer(documentId, buffer, {
+            fileHash: document.metadata?.fileHash || undefined,
+            storageKey: document.storageKey || undefined,
+            extractedText: decRes.extractedText,
+            wasEncrypted: true,
+          });
+          console.log("[PDF_PIPELINE] bank detection input = decrypted bytes");
+        } else {
+          throw new Error("Password PDF salah atau dokumen tidak dapat dibuka.");
+        }
       } else {
-        throw new Error("Password PDF salah atau dokumen tidak dapat dibuka.");
+        throw new Error("The PDF document is password-protected or encrypted.");
       }
-    } else {
-      throw new Error("The PDF document is password-protected or encrypted.");
     }
   }
 
@@ -391,8 +430,8 @@ export async function runBankDetectionOnDocument(
   });
 
   try {
-    // 4. Extract PDF text per page
-    const textResult = await extractPdfText(buffer);
+    // 4. Extract PDF text per page (using pre-cached high-fidelity text if available)
+    const textResult = await extractPdfText(buffer, { documentId, password });
 
     // 5. Run detection engine
     const metadata = document.metadata
@@ -406,6 +445,14 @@ export async function runBankDetectionOnDocument(
       : undefined;
 
     const detection = defaultBankDetectionEngine.detect(textResult, metadata);
+
+    // BNI-specific pipeline diagnostics
+    if (detection.bankCode === "BNI") {
+      console.log("[BNI_PIPELINE] decrypted PDF available");
+      console.log(`[BNI_PIPELINE] page count = ${textResult.totalPages}`);
+      console.log("[BNI_PIPELINE] text extraction completed");
+      console.log(`[BNI_PIPELINE] BNI signals detected = ${detection.bankCode === "BNI"}`);
+    }
 
     // 6. Map classification to Prisma DocumentType enum
     let docTypeEnum: DocumentType = "UNKNOWN";
@@ -621,9 +668,16 @@ export async function runTransactionExtractionOnDocument(
   try {
     // 5. Retrieve PDF buffer via in-memory decrypted cache, directBuffer, or canonical getDocumentPdf
     let buffer: Buffer;
-    const cachedDecrypted = getDecryptedBuffer(documentId);
+    let isKnownDecrypted = false;
+    const cachedDecrypted =
+      getDecryptedBuffer(documentId) ||
+      (document.storageKey ? getDecryptedBuffer(document.storageKey) : null) ||
+      (document.metadata?.fileHash ? getDecryptedBuffer(document.metadata.fileHash) : null);
+
     if (cachedDecrypted) {
       buffer = cachedDecrypted;
+      isKnownDecrypted = true;
+      console.log("[PDF_PIPELINE] transaction extraction input = decrypted bytes");
     } else if (directBuffer && isPdfBuffer(directBuffer)) {
       buffer = directBuffer;
     } else {
@@ -631,24 +685,32 @@ export async function runTransactionExtractionOnDocument(
       buffer = retrieved.buffer;
     }
 
-    // If buffer is encrypted, decrypt using password if provided
-    const encDetection = await detectEncryption(buffer);
-    if (encDetection.isEncrypted) {
-      if (password && password.trim().length > 0) {
-        const decRes = await decryptPdf(buffer, password);
-        if (decRes.success && decRes.decryptedBuffer) {
-          buffer = decRes.decryptedBuffer;
-          storeDecryptedBuffer(documentId, buffer);
+    // If buffer is NOT already decrypted, decrypt using password if provided
+    if (!isKnownDecrypted) {
+      const encDetection = await detectEncryption(buffer);
+      if (encDetection.isEncrypted) {
+        if (password && password.trim().length > 0) {
+          const decRes = await decryptPdf(buffer, password);
+          if (decRes.success && decRes.decryptedBuffer) {
+            buffer = decRes.decryptedBuffer;
+            storeDecryptedBuffer(documentId, buffer, {
+              fileHash: document.metadata?.fileHash || undefined,
+              storageKey: document.storageKey || undefined,
+              extractedText: decRes.extractedText,
+              wasEncrypted: true,
+            });
+            console.log("[PDF_PIPELINE] transaction extraction input = decrypted bytes");
+          } else {
+            throw new Error("Password PDF salah atau dokumen tidak dapat dibuka.");
+          }
         } else {
-          throw new Error("Password PDF salah atau dokumen tidak dapat dibuka.");
+          throw new Error("The PDF document is password-protected or encrypted.");
         }
-      } else {
-        throw new Error("The PDF document is password-protected or encrypted.");
       }
     }
 
-    // 6. Extract PDF text per page (preserves page boundaries)
-    const textResult = await extractPdfText(buffer);
+    // 6. Extract PDF text per page (using pre-cached high-fidelity text if available)
+    const textResult = await extractPdfText(buffer, { documentId, password });
 
     // 7. Check if document is scanned / image-only
     if (textResult.isScannedOrImageOnly) {
