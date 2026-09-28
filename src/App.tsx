@@ -24,6 +24,8 @@ import {
   Lock,
   KeyRound,
   Unlock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import type {
   DocumentRecord,
@@ -193,6 +195,7 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
   // Processing & result state
   const [processingStage, setProcessingStage] = useState<ProcessingStage>("IDLE");
   const [pdfPassword, setPdfPassword] = useState<string>("");
+  const [showPassword, setShowPassword] = useState<boolean>(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [isPasswordProtected, setIsPasswordProtected] = useState<boolean>(false);
   const [activeResult, setActiveResult] = useState<{
@@ -514,7 +517,10 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
         if (passwordToUse) {
           // A password was supplied, but server rejected it -> WRONG_PASSWORD
           setProcessingStage("WRONG_PASSWORD");
-          setPasswordError("Password PDF salah atau dokumen tidak dapat dibuka.");
+          setPasswordError(
+            inspectRes.data?.error ||
+            "Password PDF salah atau dokumen tidak dapat dibuka. Pastikan password sesuai (contoh: tanggal lahir DDMMYYYY atau nomor rekening untuk mutasi bank)."
+          );
         } else {
           // Document requires password
           setProcessingStage("PASSWORD_REQUIRED");
@@ -613,11 +619,12 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
 
   const handleUnlockAndAnalyze = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!pdfPassword || pdfPassword.trim().length === 0) {
+    const cleanPwd = pdfPassword ? pdfPassword.trim() : "";
+    if (!cleanPwd) {
       setPasswordError("Dokumen ini dilindungi password. Masukkan password PDF untuk melanjutkan analisis.");
       return;
     }
-    await executeProcessingPipeline(pdfPassword);
+    await executeProcessingPipeline(cleanPwd);
   };
 
   const isProcessing =
@@ -1152,7 +1159,7 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
                               <Lock className="w-4 h-4" />
                             </div>
                             <input
-                              type="password"
+                              type={showPassword ? "text" : "password"}
                               autoComplete="off"
                               value={pdfPassword}
                               onChange={(e) => {
@@ -1161,8 +1168,21 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
                               }}
                               placeholder="Masukkan password PDF dokumen..."
                               disabled={isProcessing}
-                              className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-white border border-amber-300 focus:border-neutral-900 rounded-lg focus:outline-none focus:ring-1 focus:ring-neutral-900 font-mono text-neutral-900 placeholder:text-neutral-400"
+                              className="w-full pl-9 pr-10 py-2 text-xs sm:text-sm bg-white border border-amber-300 focus:border-neutral-900 rounded-lg focus:outline-none focus:ring-1 focus:ring-neutral-900 font-mono text-neutral-900 placeholder:text-neutral-400"
                             />
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(!showPassword)}
+                              className="absolute inset-y-0 right-0 pr-3 flex items-center text-neutral-400 hover:text-neutral-600 cursor-pointer"
+                              tabIndex={-1}
+                              aria-label={showPassword ? "Hide password" : "Show password"}
+                            >
+                              {showPassword ? (
+                                <EyeOff className="w-4 h-4" />
+                              ) : (
+                                <Eye className="w-4 h-4" />
+                              )}
+                            </button>
                           </div>
                           <button
                             type="submit"
@@ -1182,9 +1202,14 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
                             )}
                           </button>
                         </div>
-                        <p className="text-[11px] text-amber-800/80">
-                          Password hanya digunakan sesaat di memori server dan tidak pernah disimpan di database atau disk.
-                        </p>
+                        <div className="space-y-1">
+                          <p className="text-[11px] text-amber-900/90 font-medium">
+                            💡 Tips mutasi bank (BNI, BCA, BRI, Mandiri): Password e-statement umumnya berupa tanggal lahir (format DDMMYYYY, misal: 25121990) atau nomor rekening.
+                          </p>
+                          <p className="text-[11px] text-amber-800/70">
+                            Password hanya digunakan sesaat di memori server dan tidak pernah disimpan di database atau disk.
+                          </p>
+                        </div>
                       </form>
                     </div>
                   )}
