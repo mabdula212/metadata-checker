@@ -94,10 +94,37 @@ export interface InspectApiResponse {
   algorithm?: string;
   message?: string;
   error?: string;
+  executionPlan?: string[];
+  engineResults?: {
+    metadata?: {
+      status: "SUCCESS" | "PARTIAL" | "FAILED" | "SKIPPED";
+      pageCount?: number | null;
+    };
+    bankDetection?: {
+      status: "SUCCESS" | "FAILED" | "SKIPPED";
+      bank?: string | null;
+      bankName?: string | null;
+    };
+    transactionExtraction?: {
+      status: "SUCCESS" | "PARTIAL" | "FAILED" | "SKIPPED";
+      transactionCount?: number;
+      needsReview?: number;
+    };
+    validation?: {
+      status: "SUCCESS" | "FAILED" | "SKIPPED";
+      balanceReconciliationStatus?: string | null;
+    };
+    excelExport?: {
+      status: "SUCCESS" | "FAILED" | "SKIPPED";
+    };
+  };
   data?: {
     document: DocumentRecord;
-    metadata: DocumentMetadataRecord;
+    metadata: DocumentMetadataRecord | null;
     job?: ProcessingJobRecord;
+    detection?: BankDetectionResultUi | null;
+    statement?: any;
+    extraction?: any;
   };
 }
 

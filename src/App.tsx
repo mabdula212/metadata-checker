@@ -40,10 +40,22 @@ import { BankAnalysisCard } from "./components/BankAnalysisCard";
 import { TransactionExtractionCard } from "./components/TransactionExtractionCard";
 import { ExcelExportCard } from "./components/ExcelExportCard";
 import { RecentFilesTable } from "./components/RecentFilesTable";
+import { AnalysisFeatureSelector } from "./components/AnalysisFeatureSelector";
+import { UploadProgressBar } from "./components/UploadProgressBar";
+import { ProcessingTimeline, type TimelineStep } from "./components/ProcessingTimeline";
 import type { TransactionExtractionResultUi } from "./types/transaction";
 import { AuthProvider, useAuth, type UserProfile } from "./context/AuthContext";
 import { LoginPage } from "./components/auth/LoginPage";
 import { safeApiFetch } from "./lib/api-client";
+import {
+  executeUpload,
+  type UploadProgressData,
+  type UploadTask,
+} from "./lib/upload-client";
+import {
+  type AnalysisFeature,
+  DEFAULT_ANALYSIS_FEATURES,
+} from "../lib/analysis/feature-pipeline";
 import { AdminUserManagement } from "./components/admin/AdminUserManagement";
 
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
@@ -65,6 +77,7 @@ type ProcessingStage =
   | "WRONG_PASSWORD"
   | "UNSUPPORTED_ENCRYPTION"
   | "INVALID_PDF"
+  | "CANCELLED"
   | "ERROR";
 
 interface ProcessingStateInfo {
@@ -171,6 +184,12 @@ const STAGE_DETAILS: Record<ProcessingStage, ProcessingStateInfo> = {
     label: "Invalid PDF",
     detail: "File PDF tidak valid atau kosong (0 bytes).",
   },
+  CANCELLED: {
+    stage: "CANCELLED",
+    stepNumber: 0,
+    label: "Upload Cancelled",
+    detail: "Proses unggah telah dibatalkan oleh pengguna.",
+  },
   ERROR: {
     stage: "ERROR",
     stepNumber: 0,
@@ -191,6 +210,25 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Selected analysis features state
+  const [selectedFeatures, setSelectedFeatures] = useState<AnalysisFeature[]>([
+    ...DEFAULT_ANALYSIS_FEATURES,
+  ]);
+
+  // Upload progress state
+  const [uploadProgress, setUploadProgress] = useState<UploadProgressData>({
+    state: "IDLE",
+    loadedBytes: 0,
+    totalBytes: 0,
+    percentage: 0,
+    speedBytesPerSec: 0,
+    formattedSpeed: "0 KB/s",
+    etaSeconds: null,
+    formattedEta: "Calculating...",
+    statusText: "Ready",
+  });
+  const activeUploadRef = useRef<UploadTask | null>(null);
 
   // Processing & result state
   const [processingStage, setProcessingStage] = useState<ProcessingStage>("IDLE");
@@ -237,6 +275,19 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
     fetchRecentFiles();
   }, [fetchRecentFiles]);
 
+  const handleCancelUpload = () => {
+    if (activeUploadRef.current) {
+      activeUploadRef.current.abort();
+      activeUploadRef.current = null;
+    }
+    setProcessingStage("CANCELLED");
+    setUploadProgress((prev) => ({
+      ...prev,
+      state: "CANCELLED",
+      statusText: "Upload cancelled",
+    }));
+  };
+
   /**
    * Helper to convert a File into a base64 string
    */
@@ -282,9 +333,7 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
 
     // 3. Maximum Size Check (20 MB)
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      setErrorMessage(
-        `File size exceeds 20 MB limit: "${file.name}" is ${formatBytes(file.size)}. Please upload a file under 20 MB.`
-      );
+      setErrorMessage("File terlalu besar. Maksimum ukuran PDF adalah 20 MB.");
       setSelectedRawFile(null);
       return false;
     }
@@ -308,6 +357,17 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
 
     // Validated successfully
     setSelectedRawFile(file);
+    setUploadProgress({
+      state: "SELECTED",
+      loadedBytes: 0,
+      totalBytes: file.size,
+      percentage: 0,
+      speedBytesPerSec: 0,
+      formattedSpeed: "0 KB/s",
+      etaSeconds: null,
+      formattedEta: "Calculating...",
+      statusText: "File selected",
+    });
     return true;
   }, []);
 
@@ -327,6 +387,9 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      await validateFile(e.dataTransfer.files[0]);
+    }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -336,6 +399,10 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
   };
 
   const handleClearFile = () => {
+    if (activeUploadRef.current) {
+      activeUploadRef.current.abort();
+      activeUploadRef.current = null;
+    }
     setSelectedRawFile(null);
     setErrorMessage(null);
     setPasswordError(null);
@@ -344,12 +411,27 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
     setBankDetectionResult(null);
     setTransactionExtractionResult(null);
     setProcessingStage("IDLE");
+    setUploadProgress({
+      state: "IDLE",
+      loadedBytes: 0,
+      totalBytes: 0,
+      percentage: 0,
+      speedBytesPerSec: 0,
+      formattedSpeed: "0 KB/s",
+      etaSeconds: null,
+      formattedEta: "Calculating...",
+      statusText: "Ready",
+    });
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
 
   const handleResetWorkflow = () => {
+    if (activeUploadRef.current) {
+      activeUploadRef.current.abort();
+      activeUploadRef.current = null;
+    }
     setSelectedRawFile(null);
     setActiveResult(null);
     setBankDetectionResult(null);
@@ -359,6 +441,17 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
     setPdfPassword("");
     setIsPasswordProtected(false);
     setProcessingStage("IDLE");
+    setUploadProgress({
+      state: "IDLE",
+      loadedBytes: 0,
+      totalBytes: 0,
+      percentage: 0,
+      speedBytesPerSec: 0,
+      formattedSpeed: "0 KB/s",
+      etaSeconds: null,
+      formattedEta: "Calculating...",
+      statusText: "Ready",
+    });
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -495,18 +588,39 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
 
       const formData = new FormData();
       formData.append("file", selectedRawFile, selectedRawFile.name);
+      formData.append("features", JSON.stringify(selectedFeatures));
       if (passwordToUse) {
         formData.append("password", passwordToUse);
       }
 
-      if (!passwordToUse) {
-        setProcessingStage("ANALYZING");
-      }
-
-      const inspectRes = await safeApiFetch<InspectApiResponse>("/api/pdf/inspect", {
-        method: "POST",
-        body: formData,
+      const token = typeof window !== "undefined" ? localStorage.getItem("mc_token") : null;
+      const uploadTask = executeUpload<InspectApiResponse>({
+        url: "/api/pdf/inspect",
+        formData,
+        token,
+        onProgress: (p) => {
+          setUploadProgress(p);
+          if (p.state === "UPLOADING") {
+            setProcessingStage("UPLOADING");
+          } else if (p.state === "UPLOADED" || p.state === "PROCESSING") {
+            if (passwordToUse) {
+              setProcessingStage("DECRYPTING");
+            } else {
+              setProcessingStage("INSPECTING");
+            }
+          } else if (p.state === "CANCELLED") {
+            setProcessingStage("CANCELLED");
+          }
+        },
       });
+
+      activeUploadRef.current = uploadTask;
+      const inspectRes = await uploadTask.promise;
+      activeUploadRef.current = null;
+
+      if (inspectRes.error === "Upload cancelled by user.") {
+        return;
+      }
 
       // Handle password required (HTTP 422 or requiresPassword)
       if (
@@ -568,58 +682,51 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
       setPasswordError(null);
       setIsPasswordProtected(false);
 
-      // Check if server-side pipeline already completed bank detection & transaction extraction
-      const serverDetection = (inspectData as unknown as { detection?: BankDetectionResultUi | null }).detection;
-      const serverExtraction = (inspectData as unknown as { extraction?: any }).extraction;
+      // Check if server-side pipeline returned bank detection & transaction extraction
+      const serverDetection = inspectData.detection;
+      const serverExtraction = inspectData.extraction;
 
       if (serverDetection) {
         setBankDetectionResult(serverDetection);
-        if (serverExtraction) {
-          setTransactionExtractionResult({
-            documentId: serverExtraction.documentId,
-            statementId: serverExtraction.statementId,
-            status: serverExtraction.status,
-            summary: serverExtraction.summary,
-            transactions: serverExtraction.transactions || [],
-            reviewRows: serverExtraction.reviewRows || [],
-            validation: serverExtraction.validation,
-            warning: serverExtraction.warning,
-          });
-        }
       } else {
-        // Fallback: Detect Bank & Statement Period via separate API call
-        setProcessingStage("DETECTING");
-        const detectionRes = await safeApiFetch<BankDetectionApiResponse>("/api/bank-detection", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            documentId: inspectData.document.id,
-          }),
+        setBankDetectionResult(null);
+      }
+
+      if (serverExtraction) {
+        setTransactionExtractionResult({
+          documentId: serverExtraction.documentId,
+          statementId: serverExtraction.statementId,
+          status: serverExtraction.status,
+          summary: serverExtraction.summary,
+          transactions: serverExtraction.transactions || [],
+          reviewRows: serverExtraction.reviewRows || [],
+          validation: serverExtraction.validation,
+          warning: serverExtraction.warning,
         });
-
-        // Saving result & Extracting Transactions
-        setProcessingStage("SAVING");
-        if (detectionRes.ok && detectionRes.data?.success && detectionRes.data?.detection) {
-          setBankDetectionResult(detectionRes.data.detection);
-
-          // If detected as a text-based bank statement, automatically extract transactions
-          if (
-            detectionRes.data.detection.documentType === "BANK_STATEMENT" &&
-            !detectionRes.data.detection.isScannedOrImageOnly
-          ) {
-            setProcessingStage("EXTRACTING_TRANSACTIONS");
-            await triggerTransactionExtraction(inspectData.document.id);
-          }
-        } else {
-          setBankDetectionResult(null);
-        }
+      } else {
+        setTransactionExtractionResult(null);
       }
 
       // Completed - always set active result so metadata and analysis are visible
       setProcessingStage("COMPLETED");
       setActiveResult({
         document: inspectData.document,
-        metadata: inspectData.metadata,
+        metadata: inspectData.metadata || {
+          id: "",
+          documentId: inspectData.document.id,
+          title: null,
+          author: null,
+          subject: null,
+          creator: null,
+          producer: null,
+          creationDate: null,
+          modificationDate: null,
+          pageCount: null,
+          fileHash: null,
+          rawMetadataJson: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
         isDuplicate,
       });
 
@@ -660,6 +767,101 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
     processingStage === "EXTRACTING_TRANSACTIONS";
 
   // Dynamic workflow stepper status
+  const timelineSteps: TimelineStep[] = [
+    {
+      id: "upload",
+      label: "Upload PDF",
+      status:
+        uploadProgress.state === "COMPLETED" ||
+        uploadProgress.state === "PROCESSING" ||
+        uploadProgress.state === "UPLOADED" ||
+        processingStage === "COMPLETED" ||
+        activeResult
+          ? "COMPLETED"
+          : uploadProgress.state === "UPLOADING"
+          ? "PROCESSING"
+          : uploadProgress.state === "FAILED" || uploadProgress.state === "CANCELLED"
+          ? "FAILED"
+          : "PENDING",
+      detail: selectedRawFile ? formatBytes(selectedRawFile.size) : undefined,
+    },
+    {
+      id: "metadata",
+      label: "PDF Metadata",
+      isSkipped: !selectedFeatures.includes("metadata"),
+      status: !selectedFeatures.includes("metadata")
+        ? "SKIPPED"
+        : activeResult?.metadata
+        ? "COMPLETED"
+        : processingStage === "INSPECTING" || processingStage === "EXTRACTING"
+        ? "PROCESSING"
+        : processingStage === "COMPLETED" && !activeResult?.metadata
+        ? "FAILED"
+        : "PENDING",
+      detail: activeResult?.metadata?.pageCount ? `${activeResult.metadata.pageCount} halaman` : undefined,
+    },
+    {
+      id: "bankDetection",
+      label: "Bank Detection",
+      isSkipped: !selectedFeatures.includes("bankDetection"),
+      status: !selectedFeatures.includes("bankDetection")
+        ? "SKIPPED"
+        : bankDetectionResult
+        ? "COMPLETED"
+        : isDetectingBank || processingStage === "DETECTING"
+        ? "PROCESSING"
+        : processingStage === "COMPLETED" && !bankDetectionResult
+        ? "FAILED"
+        : "PENDING",
+      detail: bankDetectionResult?.bankName || undefined,
+    },
+    {
+      id: "transactionExtraction",
+      label: "Transaction Extraction",
+      isSkipped: !selectedFeatures.includes("transactionExtraction"),
+      status: !selectedFeatures.includes("transactionExtraction")
+        ? "SKIPPED"
+        : transactionExtractionResult?.status === "COMPLETED"
+        ? "COMPLETED"
+        : transactionExtractionResult?.status === "NEEDS_REVIEW"
+        ? "PARTIAL"
+        : isExtractingTransactions || processingStage === "EXTRACTING_TRANSACTIONS"
+        ? "PROCESSING"
+        : processingStage === "COMPLETED" && !transactionExtractionResult
+        ? "FAILED"
+        : "PENDING",
+      detail: transactionExtractionResult ? `${transactionExtractionResult.transactions.length} mutasi` : undefined,
+    },
+    {
+      id: "validation",
+      label: "Balance Validation",
+      isSkipped: !selectedFeatures.includes("validation"),
+      status: !selectedFeatures.includes("validation")
+        ? "SKIPPED"
+        : transactionExtractionResult?.validation
+        ? "COMPLETED"
+        : isExtractingTransactions
+        ? "PROCESSING"
+        : processingStage === "COMPLETED" && !transactionExtractionResult?.validation
+        ? "FAILED"
+        : "PENDING",
+    },
+    {
+      id: "excelExport",
+      label: "Excel Export",
+      isSkipped: !selectedFeatures.includes("excelExport"),
+      status: !selectedFeatures.includes("excelExport")
+        ? "SKIPPED"
+        : transactionExtractionResult && transactionExtractionResult.transactions.length > 0
+        ? "COMPLETED"
+        : isExtractingTransactions
+        ? "PROCESSING"
+        : processingStage === "COMPLETED" && !transactionExtractionResult?.transactions?.length
+        ? "FAILED"
+        : "PENDING",
+    },
+  ];
+
   const workflowSteps = [
     {
       id: "upload",
@@ -925,14 +1127,20 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
               </div>
             </div>
 
+            {/* Processing Timeline (Part L) */}
+            <ProcessingTimeline steps={timelineSteps} />
+
             {/* Document Analysis Section (Bank Detection) */}
-            <BankAnalysisCard
-              detection={bankDetectionResult}
-              isLoading={isDetectingBank}
-            />
+            {(selectedFeatures.includes("bankDetection") || bankDetectionResult) && (
+              <BankAnalysisCard
+                detection={bankDetectionResult}
+                isLoading={isDetectingBank}
+              />
+            )}
 
             {/* Transaction Extraction Engine Section */}
-            {activeResult.document.documentType !== "OTHER_PDF" && (
+            {(selectedFeatures.includes("transactionExtraction") || transactionExtractionResult) &&
+              activeResult.document.documentType !== "OTHER_PDF" && (
               <TransactionExtractionCard
                 extraction={transactionExtractionResult}
                 isLoading={isExtractingTransactions}
@@ -945,7 +1153,8 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
             )}
 
             {/* Bank Statement Excel Export Engine Section */}
-            {activeResult.document.documentType !== "OTHER_PDF" && (
+            {(selectedFeatures.includes("excelExport") || transactionExtractionResult) &&
+              activeResult.document.documentType !== "OTHER_PDF" && (
               <ExcelExportCard
                 documentId={activeResult.document.id}
                 extraction={transactionExtractionResult}
@@ -955,15 +1164,24 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
             )}
 
             {/* PDF Metadata Inspector Section */}
-            <MetadataResultCard
-              document={activeResult.document}
-              metadata={activeResult.metadata}
-              isDuplicate={activeResult.isDuplicate}
-              onReset={handleResetWorkflow}
-            />
+            {(selectedFeatures.includes("metadata") || activeResult.metadata) && activeResult.metadata && (
+              <MetadataResultCard
+                document={activeResult.document}
+                metadata={activeResult.metadata}
+                isDuplicate={activeResult.isDuplicate}
+                onReset={handleResetWorkflow}
+              />
+            )}
           </section>
         ) : (
-          <section className="space-y-4">
+          <section className="space-y-6">
+            {/* Feature Selection (Part F, G, H) */}
+            <AnalysisFeatureSelector
+              selectedFeatures={selectedFeatures}
+              onChange={setSelectedFeatures}
+              disabled={isProcessing}
+            />
+
             <div className="bg-white border border-neutral-200 rounded-2xl p-6 sm:p-8 shadow-xs">
               {/* Error Notification */}
               {errorMessage && (
@@ -1266,6 +1484,22 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
                         </button>
                       </div>
                     )}
+                </div>
+              )}
+
+              {/* Real-time Upload Progress & Processing Timeline (Part A, B, C, D, E, L) */}
+              {(uploadProgress.state === "UPLOADING" ||
+                uploadProgress.state === "UPLOADED" ||
+                uploadProgress.state === "PROCESSING" ||
+                uploadProgress.state === "FAILED" ||
+                uploadProgress.state === "CANCELLED") && (
+                <div className="mt-6 space-y-4">
+                  <UploadProgressBar
+                    progress={uploadProgress}
+                    onCancel={handleCancelUpload}
+                    fileName={selectedRawFile?.name}
+                  />
+                  <ProcessingTimeline steps={timelineSteps} />
                 </div>
               )}
             </div>

@@ -23,12 +23,17 @@ import {
 } from "../../lib/db/documents.js";
 import { requireAuth, logAuditEvent } from "../../lib/auth/index.js";
 import { assertStorageConfigured } from "../../lib/storage/index.js";
+import {
+  normalizeAnalysisOptions,
+  type AnalysisFeature,
+} from "../../lib/analysis/feature-pipeline.js";
 
 interface ParsedUpload {
   fileName: string;
   bytes: Uint8Array;
   buffer: Buffer;
   password?: string | null;
+  features?: string | string[] | null;
 }
 
 /**
@@ -43,13 +48,14 @@ async function parseRequestPayload(req: IncomingMessage): Promise<ParsedUpload> 
       const formData = await (req as unknown as { formData: () => Promise<FormData> }).formData();
       const fileItem = formData.get("file") || formData.get("pdf") || formData.get("document");
       const password = (formData.get("password") as string) || null;
+      const featuresRaw = (formData.get("features") as string) || null;
       if (fileItem && typeof (fileItem as Blob).arrayBuffer === "function") {
         const file = fileItem as File;
         const sourceArrayBuffer = await file.arrayBuffer();
         const bytes = new Uint8Array(sourceArrayBuffer.slice(0));
         const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         const fileName = (file as { name?: string }).name || "document.pdf";
-        return { fileName, bytes, buffer, password };
+        return { fileName, bytes, buffer, password, features: featuresRaw };
       }
     } catch {
       // Fall through to streaming / busboy parsing
@@ -71,12 +77,15 @@ async function parseRequestPayload(req: IncomingMessage): Promise<ParsedUpload> 
 
       let originalFileName = "document.pdf";
       let password: string | null = null;
+      let features: string | null = null;
       const chunks: Buffer[] = [];
       let limitExceeded = false;
 
       busboy.on("field", (fieldname, val) => {
         if (fieldname === "password") {
           password = val;
+        } else if (fieldname === "features") {
+          features = val;
         }
       });
 
@@ -121,7 +130,7 @@ async function parseRequestPayload(req: IncomingMessage): Promise<ParsedUpload> 
         }
 
         const stableBuffer = Buffer.from(stableArrayBuffer);
-        resolve({ fileName: originalFileName, bytes: stableBytes, buffer: stableBuffer, password });
+        resolve({ fileName: originalFileName, bytes: stableBytes, buffer: stableBuffer, password, features });
       });
 
       busboy.on("error", (err: unknown) => {
@@ -173,7 +182,8 @@ async function parseRequestPayload(req: IncomingMessage): Promise<ParsedUpload> 
           const stableBuffer = createStableBufferCopy(stableBytes);
           const fileName = data.fileName || "document.pdf";
           const password = data.password || null;
-          resolve({ fileName, bytes: stableBytes, buffer: stableBuffer, password });
+          const features = data.features || null;
+          resolve({ fileName, bytes: stableBytes, buffer: stableBuffer, password, features });
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : "Invalid JSON";
           reject(new Error(`Failed to parse JSON body: ${msg}`));
@@ -232,9 +242,17 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     console.log("[PDF_PIPELINE] original PDF received");
 
     // 1. Parse and extract uploaded file & optional password
-    const { fileName, buffer, bytes, password } = await parseRequestPayload(req);
+    const { fileName, buffer, bytes, password, features } = await parseRequestPayload(req);
+    const selectedFeatures = normalizeAnalysisOptions(features);
+    const runMetadata = selectedFeatures.includes("metadata");
+    const runBankDetection = selectedFeatures.includes("bankDetection");
+    const runTransactionExtraction = selectedFeatures.includes("transactionExtraction");
+    const runValidation = selectedFeatures.includes("validation");
+    const runExcelExport = selectedFeatures.includes("excelExport");
+
     console.log("[PDF_INSPECT] file bytes loaded");
     console.log("[PDF_INSPECT] stable byte copy created");
+    console.log("[PDF_PIPELINE] execution plan:", selectedFeatures.join(", "));
 
     // 2. Encryption Detection
     const encryptionDetection = await detectEncryption(bytes || buffer);
@@ -352,54 +370,90 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       });
     }
 
-    // 5. Run Bank Detection in the same server-side workflow (Preferred by Instruction 6)
-    console.log("[PDF_PIPELINE] bank detection input = decrypted bytes");
+    // 5. Run Bank Detection if selected
     let bankDetectionResult: Awaited<ReturnType<typeof runBankDetectionOnDocument>> | null = null;
-    let bankDetectionStatus: "SUCCESS" | "FAILED" = "FAILED";
+    let bankDetectionStatus: "SUCCESS" | "FAILED" | "SKIPPED" = "SKIPPED";
 
-    try {
-      bankDetectionResult = await runBankDetectionOnDocument(
-        result.document.id,
-        Buffer.from(processedPdf.analysisBytes)
-      );
-      if (bankDetectionResult && bankDetectionResult.detection) {
-        bankDetectionStatus = "SUCCESS";
+    if (runBankDetection) {
+      console.log("[PDF_PIPELINE] bank detection input = decrypted bytes");
+      try {
+        bankDetectionResult = await runBankDetectionOnDocument(
+          result.document.id,
+          Buffer.from(processedPdf.analysisBytes)
+        );
+        if (bankDetectionResult && bankDetectionResult.detection) {
+          bankDetectionStatus = "SUCCESS";
+        } else {
+          bankDetectionStatus = "FAILED";
+        }
+      } catch (bankErr: unknown) {
+        console.warn(
+          "[PDF_PIPELINE] bank detection non-fatal error:",
+          bankErr instanceof Error ? bankErr.message : "Bank detection error"
+        );
+        bankDetectionStatus = "FAILED";
       }
-    } catch (bankErr: unknown) {
-      console.warn(
-        "[PDF_PIPELINE] bank detection non-fatal error:",
-        bankErr instanceof Error ? bankErr.message : "Bank detection error"
-      );
+    } else {
+      console.log("[PDF_PIPELINE] bank detection skipped by user selection");
     }
 
-    // 6. Run Transaction Extraction if classified as BANK_STATEMENT
+    // 6. Run Transaction Extraction if selected and classified as BANK_STATEMENT
     let txExtractionResult: Awaited<ReturnType<typeof runTransactionExtractionOnDocument>> | null = null;
-    let txExtractionStatus: "SUCCESS" | "PARTIAL" | "FAILED" = "FAILED";
+    let txExtractionStatus: "SUCCESS" | "PARTIAL" | "FAILED" | "SKIPPED" = "SKIPPED";
 
     const isBankStatement =
       bankDetectionResult?.detection?.documentType === "BANK_STATEMENT" ||
       bankDetectionResult?.document?.documentType === "BANK_STATEMENT";
 
-    if (isBankStatement && !bankDetectionResult?.detection?.isScannedOrImageOnly) {
-      console.log("[PDF_PIPELINE] transaction extraction input = decrypted bytes");
-      try {
-        txExtractionResult = await runTransactionExtractionOnDocument(
-          result.document.id,
-          Buffer.from(processedPdf.analysisBytes)
-        );
-        if (txExtractionResult) {
-          txExtractionStatus =
-            txExtractionResult.status === "COMPLETED"
-              ? "SUCCESS"
-              : txExtractionResult.status === "NEEDS_REVIEW"
-              ? "PARTIAL"
-              : "FAILED";
+    if (runTransactionExtraction) {
+      if (isBankStatement && !bankDetectionResult?.detection?.isScannedOrImageOnly) {
+        console.log("[PDF_PIPELINE] transaction extraction input = decrypted bytes");
+        try {
+          txExtractionResult = await runTransactionExtractionOnDocument(
+            result.document.id,
+            Buffer.from(processedPdf.analysisBytes)
+          );
+          if (txExtractionResult) {
+            txExtractionStatus =
+              txExtractionResult.status === "COMPLETED"
+                ? "SUCCESS"
+                : txExtractionResult.status === "NEEDS_REVIEW"
+                ? "PARTIAL"
+                : "FAILED";
+          } else {
+            txExtractionStatus = "FAILED";
+          }
+        } catch (txErr: unknown) {
+          console.warn(
+            "[PDF_PIPELINE] transaction extraction non-fatal error:",
+            txErr instanceof Error ? txErr.message : "Extraction error"
+          );
+          txExtractionStatus = "FAILED";
         }
-      } catch (txErr: unknown) {
-        console.warn(
-          "[PDF_PIPELINE] transaction extraction non-fatal error:",
-          txErr instanceof Error ? txErr.message : "Extraction error"
-        );
+      } else {
+        txExtractionStatus = "FAILED";
+      }
+    } else {
+      console.log("[PDF_PIPELINE] transaction extraction skipped by user selection");
+    }
+
+    // 6b. Validation Status
+    let validationStatus: "SUCCESS" | "FAILED" | "SKIPPED" = "SKIPPED";
+    if (runValidation) {
+      if (txExtractionResult && txExtractionResult.validation) {
+        validationStatus = "SUCCESS";
+      } else if (runTransactionExtraction && txExtractionStatus === "FAILED") {
+        validationStatus = "FAILED";
+      }
+    }
+
+    // 6c. Excel Export Status
+    let excelExportStatus: "SUCCESS" | "FAILED" | "SKIPPED" = "SKIPPED";
+    if (runExcelExport) {
+      if (txExtractionResult && txExtractionResult.transactions && txExtractionResult.transactions.length > 0) {
+        excelExportStatus = "SUCCESS";
+      } else if (runTransactionExtraction && txExtractionStatus === "FAILED") {
+        excelExportStatus = "FAILED";
       }
     }
 
@@ -417,6 +471,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         securityState: encryptionDetection.securityState,
         bankDetected: bankDetectionResult?.statement?.bankName || null,
         transactionCount: txExtractionResult?.transactions?.length ?? 0,
+        executionPlan: selectedFeatures,
       },
     });
 
@@ -428,13 +483,14 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         isDuplicate: result.isDuplicate,
         securityState: encryptionDetection.securityState,
         isEncrypted: isEncryptedDoc,
+        executionPlan: selectedFeatures,
         message: result.isDuplicate
           ? "This PDF has already been analyzed."
           : "PDF metadata successfully extracted and saved.",
         engineResults: {
           metadata: {
-            status: extractedMetadata.metadataStatus, // "SUCCESS" | "PARTIAL" | "FAILED"
-            pageCount: extractedMetadata.pageCount,
+            status: runMetadata ? extractedMetadata.metadataStatus : "SKIPPED",
+            pageCount: runMetadata ? extractedMetadata.pageCount : null,
           },
           bankDetection: {
             status: bankDetectionStatus,
@@ -446,12 +502,19 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
             transactionCount: txExtractionResult?.transactions?.length ?? 0,
             needsReview: txExtractionResult?.reviewRows?.length ?? 0,
           },
+          validation: {
+            status: validationStatus,
+            balanceReconciliationStatus: txExtractionResult?.summary?.balanceReconciliationStatus || null,
+          },
+          excelExport: {
+            status: excelExportStatus,
+          },
         },
         data: {
           document: bankDetectionResult?.document
             ? { ...result.document, ...bankDetectionResult.document }
             : result.document,
-          metadata: result.metadata,
+          metadata: runMetadata ? result.metadata : null,
           job: result.job,
           detection: bankDetectionResult?.detection ?? null,
           statement: bankDetectionResult?.statement ?? null,
