@@ -5,7 +5,6 @@ import {
   FileText,
   Copy,
   Check,
-  Calendar,
   Layers,
   Hash,
   Info,
@@ -57,7 +56,6 @@ export function MetadataResultCard({
     }
   };
 
-  // Safely extract PDF version and metadata status from rawMetadataJson
   const rawObj = (metadata.rawMetadataJson as Record<string, unknown>) || {};
   const pdfVersion = typeof rawObj.pdfVersion === "string" ? rawObj.pdfVersion : null;
   const metadataStatus = typeof rawObj.metadataStatus === "string" ? rawObj.metadataStatus : "SUCCESS";
@@ -72,23 +70,23 @@ export function MetadataResultCard({
     { label: "Producer", value: metadata.producer },
     { label: "Creation Date", value: metadata.creationDate ? formatDate(metadata.creationDate) : null },
     { label: "Modification Date", value: metadata.modificationDate ? formatDate(metadata.modificationDate) : null },
+    { label: "Page Count", value: metadata.pageCount !== null ? `${metadata.pageCount} ${metadata.pageCount === 1 ? "page" : "pages"}` : null },
     { label: "PDF Version", value: pdfVersion ? `v${pdfVersion}` : null },
-    { label: "Document Type", value: "Unknown", note: "Classification deferred to Bank Detection stage" },
   ];
 
   return (
-    <div className="bg-white border border-neutral-200 rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
+    <div id="pdf-metadata-card" className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-7 shadow-xs space-y-6">
       {/* Duplicate Notice Banner */}
       {isDuplicate && (
         <div
           role="status"
-          className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-start gap-3 text-xs sm:text-sm"
+          className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-start gap-2.5 text-xs"
         >
-          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
           <div className="space-y-0.5 flex-1">
             <div className="font-semibold text-amber-950">Duplicate Document Detected</div>
             <p className="text-amber-800 leading-relaxed">
-              This PDF has already been analyzed. Displaying existing metadata record from the database. No duplicate entry was created.
+              This PDF has already been analyzed. Displaying existing record from the database.
             </p>
           </div>
         </div>
@@ -104,34 +102,28 @@ export function MetadataResultCard({
           <div className="space-y-0.5">
             <span className="font-semibold text-amber-950">Partial Metadata Available: </span>
             <span className="text-amber-900/90">
-              {explanation || "Dokumen PDF berhasil dibuka dan halaman terbaca. Atribut judul/penulis tidak didefinisikan secara eksplisit oleh sistem generator bank."}
+              {explanation || "Document pages and structure were read successfully. Some title/author tags were not explicitly set by the bank's PDF generator."}
             </span>
           </div>
         </div>
       )}
 
       {/* Header section */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-neutral-100">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-neutral-900 text-white flex items-center justify-center shrink-0 shadow-xs">
-            <FileText className="w-6 h-6" />
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-100">
+            <FileText className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg sm:text-xl font-extrabold text-neutral-950 tracking-tight">
-                METADATA RESULT
-              </h2>
-              {isPartial ? (
-                <span className="text-[10px] font-semibold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full border border-amber-300 uppercase tracking-wide">
-                  Verified PDF (Partial Metadata)
-                </span>
-              ) : (
-                <span className="text-[10px] font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200 uppercase tracking-wide">
-                  Verified PDF
-                </span>
-              )}
+              <h3 className="text-base font-semibold text-slate-900 tracking-tight">
+                PDF Metadata
+              </h3>
+              <span className="text-xs text-slate-500 font-normal">
+                · {formatBytes(document.fileSize)}
+              </span>
             </div>
-            <p className="text-xs text-neutral-500 mt-0.5">
+            <p className="text-xs text-slate-500 mt-0.5">
               Inspected on {formatDate(metadata.createdAt || document.createdAt)}
             </p>
           </div>
@@ -140,111 +132,86 @@ export function MetadataResultCard({
         <button
           type="button"
           onClick={onReset}
-          className="inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-medium transition-colors cursor-pointer shrink-0"
+          className="inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors cursor-pointer shrink-0"
         >
           <RefreshCw className="w-3.5 h-3.5" />
-          Inspect Another PDF
+          Analyze Another File
         </button>
       </div>
 
-      {/* Primary File Metrics Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80">
-          <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider block">
+      {/* File Hash & Primary Metadata Key Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/80">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block">
             File Name
           </span>
-          <span className="text-xs sm:text-sm font-semibold text-neutral-900 truncate block mt-1" title={document.originalFileName}>
+          <span className="text-xs font-semibold text-slate-900 truncate block mt-1" title={document.originalFileName}>
             {document.originalFileName}
           </span>
         </div>
 
-        <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80">
-          <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider block">
-            File Size
+        <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/80">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block">
+            Page Count
           </span>
-          <span className="text-xs sm:text-sm font-semibold text-neutral-900 block mt-1">
-            {formatBytes(document.fileSize)}
-          </span>
-        </div>
-
-        <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80">
-          <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider block">
-            Total Pages
-          </span>
-          <span className="text-xs sm:text-sm font-semibold text-neutral-900 flex items-center gap-1.5 mt-1">
-            <Layers className="w-3.5 h-3.5 text-neutral-500" />
+          <span className="text-xs font-semibold text-slate-900 flex items-center gap-1.5 mt-1">
+            <Layers className="w-3.5 h-3.5 text-slate-400" />
             {metadata.pageCount !== null ? `${metadata.pageCount} ${metadata.pageCount === 1 ? "page" : "pages"}` : "Not available"}
           </span>
         </div>
 
-        <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80">
-          <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider block">
-            Document Type
-          </span>
-          <span className="text-xs sm:text-sm font-semibold text-neutral-900 block mt-1">
-            {document.documentType === "UNKNOWN" ? "Unknown" : document.documentType}
+        <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/80">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+              <Hash className="w-3 h-3" />
+              File Hash (SHA-256)
+            </span>
+            <button
+              type="button"
+              onClick={handleCopyHash}
+              className="text-[10px] text-blue-600 hover:text-blue-800 font-medium inline-flex items-center gap-1 cursor-pointer"
+            >
+              {copiedHash ? (
+                <>
+                  <Check className="w-3 h-3 text-emerald-600" />
+                  Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3" />
+                  Copy
+                </>
+              )}
+            </button>
+          </div>
+          <span className="text-xs font-mono text-slate-800 truncate block mt-1" title={metadata.fileHash || ""}>
+            {metadata.fileHash || "Not available"}
           </span>
         </div>
       </div>
 
-      {/* SHA-256 Checksum Card */}
-      <div className="p-4 rounded-xl bg-neutral-900 text-white space-y-2">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-neutral-400 font-mono flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
-            <Hash className="w-3.5 h-3.5 text-neutral-400" />
-            SHA-256 Checksum
-          </span>
-          <button
-            type="button"
-            onClick={handleCopyHash}
-            className="inline-flex items-center gap-1 text-[11px] font-mono text-neutral-300 hover:text-white px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 transition-colors cursor-pointer"
-          >
-            {copiedHash ? (
-              <>
-                <Check className="w-3 h-3 text-emerald-400" />
-                Copied
-              </>
-            ) : (
-              <>
-                <Copy className="w-3 h-3" />
-                Copy Hash
-              </>
-            )}
-          </button>
-        </div>
-        <div className="font-mono text-xs sm:text-sm text-neutral-200 break-all select-all">
-          {metadata.fileHash || "Not available"}
-        </div>
-      </div>
-
-      {/* Detailed PDF Metadata Section */}
+      {/* Detailed Metadata Grid */}
       <div className="space-y-3">
-        <h3 className="text-xs font-bold text-neutral-900 uppercase tracking-wider flex items-center gap-1.5">
-          <Info className="w-3.5 h-3.5 text-neutral-500" />
-          PDF Metadata Attributes
-        </h3>
+        <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
+          Technical Metadata Properties
+        </h4>
 
-        <div className="border border-neutral-200 rounded-xl overflow-hidden divide-y divide-neutral-100">
+        <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
           {metadataFields.map((field) => (
             <div
               key={field.label}
-              className="px-4 py-3 sm:py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-4 hover:bg-neutral-50/60 transition-colors"
+              className="px-4 py-2.5 sm:py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-4 hover:bg-slate-50/50 transition-colors text-xs"
             >
-              <div className="sm:w-1/3">
-                <span className="text-xs font-semibold text-neutral-700">
-                  {field.label}
-                </span>
-                {field.note && (
-                  <p className="text-[10px] text-neutral-400">{field.note}</p>
-                )}
+              <div className="sm:w-1/3 font-medium text-slate-600">
+                {field.label}
               </div>
               <div className="sm:w-2/3">
                 {field.value ? (
-                  <span className="text-xs sm:text-sm font-medium text-neutral-950 break-words">
+                  <span className="font-medium text-slate-900 break-words">
                     {field.value}
                   </span>
                 ) : (
-                  <span className="inline-block text-[11px] font-medium text-neutral-400 italic bg-neutral-100 px-2 py-0.5 rounded">
+                  <span className="text-slate-400 italic">
                     Not available
                   </span>
                 )}
@@ -255,22 +222,22 @@ export function MetadataResultCard({
       </div>
 
       {/* Expandable Raw Metadata JSON */}
-      <div className="border-t border-neutral-100 pt-4">
+      <div className="border-t border-slate-100 pt-3">
         <button
           type="button"
           onClick={() => setShowRawJson(!showRawJson)}
-          className="flex items-center justify-between w-full text-left text-xs font-semibold text-neutral-600 hover:text-neutral-900 cursor-pointer py-1"
+          className="flex items-center justify-between w-full text-left text-xs font-medium text-slate-500 hover:text-slate-900 cursor-pointer py-1"
         >
-          <span>Raw Metadata JSON Payload</span>
+          <span>View Raw Metadata JSON Payload</span>
           {showRawJson ? (
-            <ChevronUp className="w-4 h-4 text-neutral-500" />
+            <ChevronUp className="w-4 h-4 text-slate-400" />
           ) : (
-            <ChevronDown className="w-4 h-4 text-neutral-500" />
+            <ChevronDown className="w-4 h-4 text-slate-400" />
           )}
         </button>
 
         {showRawJson && (
-          <div className="mt-3 p-4 rounded-xl bg-neutral-950 text-emerald-400 font-mono text-[11px] sm:text-xs overflow-x-auto max-h-80 select-all border border-neutral-800">
+          <div className="mt-3 p-4 rounded-xl bg-slate-900 text-slate-200 font-mono text-[11px] overflow-x-auto max-h-80 select-all border border-slate-800">
             <pre className="whitespace-pre-wrap leading-relaxed">
               {JSON.stringify(metadata.rawMetadataJson, null, 2)}
             </pre>

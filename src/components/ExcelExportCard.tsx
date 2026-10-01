@@ -7,7 +7,6 @@ import {
   AlertCircle,
   FileCheck,
   Calendar,
-  Layers,
   AlertTriangle,
   RotateCcw,
 } from "lucide-react";
@@ -118,20 +117,20 @@ export function ExcelExportCard({
   return (
     <div
       id="excel-export-section"
-      className="bg-white border border-neutral-200 rounded-2xl shadow-xs overflow-hidden"
+      className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden p-6 sm:p-7 space-y-5"
     >
       {/* Header */}
-      <div className="p-6 border-b border-neutral-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-center text-emerald-700 shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-700 shrink-0">
             <FileSpreadsheet className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-base font-semibold text-neutral-900">
-              Bank Statement Excel Export Engine
+            <h3 className="text-base font-semibold text-slate-900 tracking-tight">
+              Export Results
             </h3>
-            <p className="text-xs text-neutral-500">
-              Generate a formatted 4-sheet .xlsx workbook (Summary, Transactions, Needs Review, Metadata)
+            <p className="text-xs text-slate-500 mt-0.5">
+              Download your analysis as an Excel workbook.
             </p>
           </div>
         </div>
@@ -144,10 +143,10 @@ export function ExcelExportCard({
               type="button"
               onClick={handleExport}
               disabled={!hasTransactions || isExtractingTransactions || isScannedOrImageOnly || isFailed}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-neutral-900 hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-400 text-white text-xs font-medium rounded-lg shadow-xs transition-colors cursor-pointer disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer disabled:cursor-not-allowed"
             >
               <FileSpreadsheet className="w-4 h-4" />
-              Export Excel
+              Export to Excel
             </button>
           )}
 
@@ -156,7 +155,7 @@ export function ExcelExportCard({
               id="export-excel-button-processing"
               type="button"
               disabled
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-neutral-800 text-white text-xs font-medium rounded-lg shadow-xs cursor-wait"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-xs cursor-wait"
             >
               <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
               Generating Excel...
@@ -169,7 +168,7 @@ export function ExcelExportCard({
                 id="export-excel-button-success"
                 type="button"
                 onClick={handleDownload}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-lg shadow-xs transition-colors cursor-pointer"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer"
               >
                 <Download className="w-4 h-4" />
                 Download Excel
@@ -178,7 +177,7 @@ export function ExcelExportCard({
                 type="button"
                 onClick={handleExport}
                 title="Regenerate workbook"
-                className="p-2.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-lg text-xs cursor-pointer transition-colors"
+                className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs cursor-pointer transition-colors"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
@@ -191,7 +190,7 @@ export function ExcelExportCard({
                 id="export-excel-button-error"
                 type="button"
                 onClick={handleExport}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium rounded-lg shadow-xs transition-colors cursor-pointer"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer"
               >
                 <AlertCircle className="w-4 h-4" />
                 Export Failed
@@ -201,154 +200,111 @@ export function ExcelExportCard({
         </div>
       </div>
 
-      {/* Body Content */}
-      <div className="p-6 space-y-4">
-        {/* Error notification if failed */}
-        {status === "ERROR" && errorMessage && (
-          <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-900 text-xs">
-            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <span className="font-semibold block">Export Error</span>
-              <p>{errorMessage}</p>
-              <p className="text-rose-700 text-[11px] mt-1">
-                Click &quot;Export Failed&quot; above to retry.
-              </p>
-            </div>
+      {/* Sheets Structure Badge Row */}
+      <div className="p-4 bg-slate-50/70 border border-slate-200/80 rounded-xl space-y-2.5">
+        <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+          Workbook Sheets Included in Export:
+        </span>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+          <div className="flex items-center gap-2 p-2 bg-white rounded-lg border border-slate-200">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span className="font-medium text-slate-800">Summary</span>
           </div>
-        )}
-
-        {/* Informational states when extraction hasn't completed or is scanned */}
-        {!hasTransactions && !isExtractingTransactions && !isScannedOrImageOnly && (
-          <div className="p-4 bg-neutral-50 border border-neutral-200/80 rounded-xl flex items-center justify-between text-xs text-neutral-600">
-            <div className="flex items-center gap-2">
-              <FileCheck className="w-4 h-4 text-neutral-400" />
-              <span>Complete transaction extraction before exporting.</span>
-            </div>
-            <span className="text-[11px] text-neutral-400 font-mono">XLSX Engine Ready</span>
+          <div className="flex items-center gap-2 p-2 bg-white rounded-lg border border-slate-200">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span className="font-medium text-slate-800">Transactions</span>
           </div>
-        )}
-
-        {isScannedOrImageOnly && (
-          <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-amber-900 text-xs">
-            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div>
-              <span className="font-semibold block mb-0.5">Scanned Document Guard</span>
-              Export is unavailable because this document is an image-based PDF requiring OCR.
-            </div>
+          <div className="flex items-center gap-2 p-2 bg-white rounded-lg border border-slate-200">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span className="font-medium text-slate-800">Needs Review</span>
           </div>
-        )}
-
-        {/* Successful Export Summary Box */}
-        {status === "SUCCESS" && exportData && (
-          <div
-            id="export-summary-panel"
-            className="p-5 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-4 animate-in fade-in duration-200"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-emerald-900">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                <span className="text-sm font-semibold">
-                  Excel export created successfully.
-                </span>
-              </div>
-              <span className="text-xs text-emerald-700 font-medium">
-                {formatFileSize(exportData.fileSize)}
-              </span>
-            </div>
-
-            {/* Metrics grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="p-3 bg-white rounded-lg border border-emerald-100 shadow-2xs">
-                <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider block">
-                  File Name
-                </span>
-                <span className="text-xs font-semibold text-neutral-900 mt-1 block truncate font-mono">
-                  {exportData.fileName}
-                </span>
-              </div>
-
-              <div className="p-3 bg-white rounded-lg border border-emerald-100 shadow-2xs">
-                <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider block">
-                  Transactions
-                </span>
-                <span className="text-sm font-semibold text-neutral-900 mt-1 block">
-                  {exportData.transactionCount} Rows
-                </span>
-              </div>
-
-              <div className="p-3 bg-white rounded-lg border border-emerald-100 shadow-2xs">
-                <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider block">
-                  Needing Review
-                </span>
-                <span
-                  className={`text-sm font-semibold mt-1 block ${
-                    exportData.reviewCount > 0 ? "text-amber-700" : "text-emerald-700"
-                  }`}
-                >
-                  {exportData.reviewCount > 0
-                    ? `${exportData.reviewCount} Row(s)`
-                    : "None (0)"}
-                </span>
-              </div>
-
-              <div className="p-3 bg-white rounded-lg border border-emerald-100 shadow-2xs">
-                <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider block">
-                  Export Date/Time
-                </span>
-                <span className="text-xs font-semibold text-neutral-900 mt-1 block">
-                  {formatDateTime(exportData.createdAt)}
-                </span>
-              </div>
-            </div>
-
-            {/* Primary Download Button */}
-            <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <p className="text-xs text-neutral-600">
-                The generated workbook includes <strong>Summary</strong>,{" "}
-                <strong>Transactions</strong>, <strong>Needs Review</strong>, and{" "}
-                <strong>Metadata</strong> sheets with mathematical precision.
-              </p>
-              <button
-                id="export-summary-download-button"
-                type="button"
-                onClick={handleDownload}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer shrink-0"
-              >
-                <Download className="w-4 h-4" />
-                Download Excel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Workbook Architecture Overview */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1 text-xs">
-          <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200/60">
-            <span className="font-semibold text-neutral-800 block text-[11px]">1. Summary</span>
-            <span className="text-neutral-500 text-[10px]">
-              Bank info, balances, period & reconciliation
-            </span>
-          </div>
-          <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200/60">
-            <span className="font-semibold text-neutral-800 block text-[11px]">2. Transactions</span>
-            <span className="text-neutral-500 text-[10px]">
-              Freeze pane, AutoFilter, numeric decimals
-            </span>
-          </div>
-          <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200/60">
-            <span className="font-semibold text-neutral-800 block text-[11px]">3. Needs Review</span>
-            <span className="text-neutral-500 text-[10px]">
-              Ambiguous rows & parsing exceptions
-            </span>
-          </div>
-          <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200/60">
-            <span className="font-semibold text-neutral-800 block text-[11px]">4. Metadata</span>
-            <span className="text-neutral-500 text-[10px]">
-              PDF properties, hash & masked account
-            </span>
+          <div className="flex items-center gap-2 p-2 bg-white rounded-lg border border-slate-200">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span className="font-medium text-slate-800">Metadata</span>
           </div>
         </div>
       </div>
+
+      {/* Error notification if failed */}
+      {status === "ERROR" && errorMessage && (
+        <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-900 text-xs">
+          <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <span className="font-semibold block">Export Error</span>
+            <p>{errorMessage}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Informational states when extraction hasn't completed or is scanned */}
+      {!hasTransactions && !isExtractingTransactions && !isScannedOrImageOnly && (
+        <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between text-xs text-slate-500">
+          <div className="flex items-center gap-2">
+            <FileCheck className="w-4 h-4 text-slate-400" />
+            <span>Complete transaction extraction before exporting.</span>
+          </div>
+          <span className="text-[11px] text-slate-400 font-mono">XLSX Engine Ready</span>
+        </div>
+      )}
+
+      {isScannedOrImageOnly && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-amber-900 text-xs">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-semibold block mb-0.5">Scanned Document Guard</span>
+            Export is unavailable because this document is an image-based PDF requiring OCR.
+          </div>
+        </div>
+      )}
+
+      {/* Successful Export Summary Box */}
+      {status === "SUCCESS" && exportData && (
+        <div
+          id="export-summary-panel"
+          className="p-5 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-4 animate-in fade-in duration-200"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-emerald-900">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              <span className="text-sm font-semibold">
+                Excel Workbook Successfully Generated
+              </span>
+            </div>
+            <span className="text-xs font-mono font-medium text-emerald-700 bg-white px-2 py-0.5 rounded border border-emerald-200">
+              {formatFileSize(exportData.fileSize)}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="p-3 bg-white rounded-lg border border-emerald-100">
+              <span className="text-slate-400 block text-[10px] uppercase font-semibold">File Name</span>
+              <span className="font-mono text-slate-900 font-medium truncate block mt-0.5" title={exportData.fileName}>
+                {exportData.fileName}
+              </span>
+            </div>
+            <div className="p-3 bg-white rounded-lg border border-emerald-100">
+              <span className="text-slate-400 block text-[10px] uppercase font-semibold">Transactions</span>
+              <span className="font-mono text-slate-900 font-semibold mt-0.5 block">
+                {exportData.transactionCount}
+              </span>
+            </div>
+            <div className="p-3 bg-white rounded-lg border border-emerald-100">
+              <span className="text-slate-400 block text-[10px] uppercase font-semibold">Review Rows</span>
+              <span className="font-mono text-amber-700 font-semibold mt-0.5 block">
+                {exportData.reviewCount}
+              </span>
+            </div>
+            <div className="p-3 bg-white rounded-lg border border-emerald-100">
+              <span className="text-slate-400 block text-[10px] uppercase font-semibold flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-slate-400" /> Generated
+              </span>
+              <span className="text-slate-800 text-[11px] mt-0.5 block">
+                {formatDateTime(exportData.createdAt)}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

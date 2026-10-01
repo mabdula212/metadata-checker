@@ -215,23 +215,25 @@ export const AdminUserManagement: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 sm:p-7 rounded-2xl border border-slate-200 shadow-xs">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <Shield className="w-5 h-5 text-indigo-600" />
-            <h2 className="text-xl font-bold text-slate-900">User Administration & RBAC</h2>
+            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
+              <Shield className="w-4 h-4" />
+            </div>
+            <h2 className="text-lg font-bold text-slate-900 tracking-tight">Admin Console & User RBAC</h2>
           </div>
-          <p className="text-sm text-slate-500">
-            Manage system users, grant administrative permissions, and control tenant isolation.
+          <p className="text-xs text-slate-500 mt-0.5">
+            Manage system users, administrative permissions, and tenant isolation in Neon PostgreSQL.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={fetchUsers}
             disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
             <span>Refresh</span>
@@ -241,7 +243,7 @@ export const AdminUserManagement: React.FC = () => {
             id="admin-create-user-btn"
             type="button"
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors shadow-sm cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors shadow-xs cursor-pointer"
           >
             <UserPlus className="w-3.5 h-3.5" />
             <span>Create User</span>
@@ -249,177 +251,145 @@ export const AdminUserManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Alerts */}
-      {successMessage && (
-        <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-            <span>{successMessage}</span>
-          </div>
-          <button
-            onClick={() => setSuccessMessage(null)}
-            className="text-emerald-700 hover:text-emerald-900 cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
+      {/* Notifications */}
       {errorMessage && (
-        <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm flex items-center justify-between">
+        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
             <span>{errorMessage}</span>
           </div>
           <button
+            type="button"
             onClick={() => setErrorMessage(null)}
-            className="text-red-700 hover:text-red-900 cursor-pointer"
+            className="text-rose-500 hover:text-rose-700 cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
-      {/* Users Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+      {successMessage && (
+        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-slate-500" />
-            <span className="text-sm font-semibold text-slate-800">
-              Registered Accounts ({users.length})
-            </span>
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{successMessage}</span>
           </div>
+          <button
+            type="button"
+            onClick={() => setSuccessMessage(null)}
+            className="text-emerald-500 hover:text-emerald-700 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
+      )}
 
+      {/* User Records Table */}
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
+              <tr>
                 <th className="py-3 px-4">User</th>
                 <th className="py-3 px-4">Role</th>
                 <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4">Documents</th>
-                <th className="py-3 px-4">Created Date</th>
+                <th className="py-3 px-4">Exports</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-sm">
+            <tbody className="divide-y divide-slate-100 text-slate-800">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-500">
-                    <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-slate-400" />
-                    <span>Loading user accounts...</span>
+                  <td colSpan={6} className="py-8 text-center text-slate-400">
+                    <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-slate-500" />
+                    Loading user records...
                   </td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-slate-400">
-                    No users found.
+                    No users found in database.
                   </td>
                 </tr>
               ) : (
                 users.map((u) => {
                   const isCurrent = u.id === currentAdmin?.id;
+                  const isActive = u.status === "ACTIVE";
+                  const isAdmin = u.role === "ADMIN";
+
                   return (
-                    <tr key={u.id} className="hover:bg-slate-50/75 transition-colors">
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs uppercase">
-                            {u.name ? u.name.slice(0, 2) : u.email.slice(0, 2)}
-                          </div>
-                          <div>
-                            <div className="font-medium text-slate-900 flex items-center gap-1.5">
-                              <span>{u.name || "Unnamed User"}</span>
-                              {isCurrent && (
-                                <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-normal">
-                                  You
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-xs text-slate-500">{u.email}</div>
-                          </div>
-                        </div>
+                    <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-slate-900">{u.name || "Unnamed"}</div>
+                        <div className="text-slate-500 font-mono text-[11px]">{u.email}</div>
                       </td>
-
-                      <td className="py-3.5 px-4">
-                        {u.role === "ADMIN" ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-50 border border-amber-200 text-amber-800">
-                            <ShieldCheck className="w-3 h-3 text-amber-600" />
-                            ADMIN
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 border border-slate-200 text-slate-700">
-                            USER
-                          </span>
-                        )}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleRole(u)}
+                          disabled={actionLoading || isCurrent}
+                          title={isCurrent ? "Cannot change own role" : "Click to toggle role"}
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-semibold border transition-colors cursor-pointer disabled:cursor-not-allowed ${
+                            isAdmin
+                              ? "bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
+                              : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
+                          }`}
+                        >
+                          {isAdmin ? (
+                            <>
+                              <ShieldAlert className="w-3 h-3 text-purple-600" />
+                              ADMIN
+                            </>
+                          ) : (
+                            <>
+                              <User className="w-3 h-3 text-slate-500" />
+                              USER
+                            </>
+                          )}
+                        </button>
                       </td>
-
-                      <td className="py-3.5 px-4">
-                        {u.status === "ACTIVE" ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            Active
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700">
-                            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                            Deactivated
-                          </span>
-                        )}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                            isActive
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : "bg-rose-50 text-rose-700 border-rose-200"
+                          }`}
+                        >
+                          {isActive ? "ACTIVE" : "DEACTIVATED"}
+                        </span>
                       </td>
-
-                      <td className="py-3.5 px-4 text-xs text-slate-600">
-                        {u.documentCount} {u.documentCount === 1 ? "file" : "files"}
+                      <td className="py-3 px-4 font-mono font-medium text-slate-700">
+                        {u.documentCount}
                       </td>
-
-                      <td className="py-3.5 px-4 text-xs text-slate-500 whitespace-nowrap">
-                        {new Date(u.createdAt).toLocaleDateString("en-US", {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })}
+                      <td className="py-3 px-4 font-mono font-medium text-slate-700">
+                        {u.exportCount}
                       </td>
-
-                      <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                        <div className="inline-flex items-center gap-2">
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => {
                               setSelectedUserForReset(u);
                               setShowResetModal(true);
                             }}
-                            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors cursor-pointer"
+                            className="px-2 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded text-xs transition-colors cursor-pointer"
                             title="Reset Password"
                           >
                             <Key className="w-3.5 h-3.5" />
                           </button>
-
                           <button
                             type="button"
-                            disabled={isCurrent || actionLoading}
-                            onClick={() => handleToggleRole(u)}
-                            className={`px-2 py-1 text-xs font-medium rounded border transition-colors cursor-pointer ${
-                              isCurrent
-                                ? "opacity-40 cursor-not-allowed border-slate-200 text-slate-400"
-                                : "border-slate-200 hover:bg-slate-100 text-slate-700"
-                            }`}
-                          >
-                            {u.role === "ADMIN" ? "Demote to User" : "Make Admin"}
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={isCurrent || actionLoading}
                             onClick={() => handleToggleStatus(u)}
-                            className={`px-2 py-1 text-xs font-medium rounded transition-colors cursor-pointer ${
-                              isCurrent
-                                ? "opacity-40 cursor-not-allowed bg-slate-100 text-slate-400"
-                                : u.status === "ACTIVE"
-                                ? "bg-red-50 hover:bg-red-100 text-red-700 border border-red-200"
-                                : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200"
+                            disabled={actionLoading || isCurrent}
+                            className={`px-2 py-1 rounded text-xs font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                              isActive
+                                ? "text-rose-600 hover:bg-rose-50"
+                                : "text-emerald-600 hover:bg-emerald-50"
                             }`}
                           >
-                            {u.status === "ACTIVE" ? "Deactivate" : "Activate"}
+                            {isActive ? "Deactivate" : "Activate"}
                           </button>
                         </div>
                       </td>
@@ -432,96 +402,83 @@ export const AdminUserManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* CREATE USER MODAL */}
+      {/* Create User Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
-              <div className="flex items-center gap-2">
-                <UserPlus className="w-5 h-5 text-slate-900" />
-                <h3 className="font-bold text-slate-900 text-lg">Create New User</h3>
-              </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-7 max-w-md w-full shadow-lg space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-900">Create New System User</h3>
               <button
+                type="button"
                 onClick={() => setShowCreateModal(false)}
                 className="text-slate-400 hover:text-slate-600 cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateUser} className="space-y-4">
+            <form onSubmit={handleCreateUser} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
-                  Full Name
-                </label>
+                <label className="block font-semibold text-slate-700 mb-1">Full Name</label>
                 <input
                   type="text"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  placeholder="Jane Analyst"
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white"
+                  placeholder="Jane Doe"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
-                  Email Address *
-                </label>
+                <label className="block font-semibold text-slate-700 mb-1">Email Address *</label>
                 <input
                   type="email"
                   required
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="jane@company.com"
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white"
+                  placeholder="user@example.com"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
-                  Initial Password *
-                </label>
+                <label className="block font-semibold text-slate-700 mb-1">Password *</label>
                 <input
                   type="password"
                   required
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Min 8 chars, 1 number or symbol"
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white"
+                  placeholder="Minimum 8 characters"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
                 />
-                <span className="text-[11px] text-slate-500 mt-1 block">
-                  Must be at least 8 characters with at least one number or special character.
-                </span>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
-                  Role
-                </label>
+                <label className="block font-semibold text-slate-700 mb-1">Role</label>
                 <select
                   value={newRole}
                   onChange={(e) => setNewRole(e.target.value as "USER" | "ADMIN")}
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
                 >
-                  <option value="USER">USER (Standard Analyst)</option>
-                  <option value="ADMIN">ADMIN (Full Privileges)</option>
+                  <option value="USER">Standard User (USER)</option>
+                  <option value="ADMIN">Administrative User (ADMIN)</option>
                 </select>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                  className="px-3 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-medium cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={actionLoading}
-                  className="px-4 py-2 text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-semibold shadow-xs transition-colors cursor-pointer"
                 >
-                  {actionLoading ? "Creating..." : "Create Account"}
+                  {actionLoading ? "Creating..." : "Create User"}
                 </button>
               </div>
             </form>
@@ -529,64 +486,56 @@ export const AdminUserManagement: React.FC = () => {
         </div>
       )}
 
-      {/* RESET PASSWORD MODAL */}
+      {/* Reset Password Modal */}
       {showResetModal && selectedUserForReset && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
-              <div className="flex items-center gap-2">
-                <Key className="w-5 h-5 text-slate-900" />
-                <h3 className="font-bold text-slate-900 text-lg">Reset Password</h3>
-              </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-7 max-w-md w-full shadow-lg space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-900">
+                Reset Password: {selectedUserForReset.email}
+              </h3>
               <button
+                type="button"
                 onClick={() => {
                   setShowResetModal(false);
                   setSelectedUserForReset(null);
                 }}
                 className="text-slate-400 hover:text-slate-600 cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-600 mb-4">
-              Resetting password for{" "}
-              <span className="font-semibold text-slate-900">{selectedUserForReset.email}</span>.
-              All active sessions for this user will be revoked immediately.
-            </p>
-
-            <form onSubmit={handleResetPassword} className="space-y-4">
+            <form onSubmit={handleResetPassword} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
-                  New Password *
-                </label>
+                <label className="block font-semibold text-slate-700 mb-1">New Password *</label>
                 <input
                   type="password"
                   required
                   value={resetNewPassword}
                   onChange={(e) => setResetNewPassword(e.target.value)}
-                  placeholder="Enter new password"
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white"
+                  placeholder="Enter new secure password"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => {
                     setShowResetModal(false);
                     setSelectedUserForReset(null);
                   }}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                  className="px-3 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-medium cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={actionLoading}
-                  className="px-4 py-2 text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-semibold shadow-xs transition-colors cursor-pointer"
                 >
-                  {actionLoading ? "Updating..." : "Update Password"}
+                  {actionLoading ? "Resetting..." : "Reset Password"}
                 </button>
               </div>
             </form>

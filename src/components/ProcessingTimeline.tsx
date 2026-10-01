@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   XCircle,
 } from "lucide-react";
-import type { AnalysisFeature } from "../../lib/analysis/feature-pipeline";
 
 export type StepStatus =
   | "COMPLETED"
@@ -27,40 +26,54 @@ export interface TimelineStep {
 
 interface ProcessingTimelineProps {
   steps: TimelineStep[];
+  title?: string;
+  subtitle?: string;
 }
 
-export const ProcessingTimeline: React.FC<ProcessingTimelineProps> = ({ steps }) => {
+export const ProcessingTimeline: React.FC<ProcessingTimelineProps> = ({
+  steps,
+  title = "Analyzing Your Document",
+  subtitle = "We're processing the analysis you selected.",
+}) => {
   return (
-    <div className="w-full bg-slate-900/80 border border-slate-800 rounded-xl p-4 sm:p-5 backdrop-blur-sm">
-      <div className="flex items-center justify-between mb-3.5 pb-2.5 border-b border-slate-800">
-        <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-          Processing Timeline
-        </h4>
-        <span className="text-[11px] text-slate-400">Tahapan Analisis Dokumen</span>
+    <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-xs">
+      <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+        <div>
+          <h4 className="text-sm font-semibold text-slate-900 tracking-tight">
+            {title}
+          </h4>
+          <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>
+        </div>
       </div>
 
-      <div className="space-y-2.5">
-        {steps.map((step, idx) => {
-          const isLast = idx === steps.length - 1;
+      <div className="space-y-3">
+        {steps.map((step) => {
           const { status, label, detail, isSkipped } = step;
 
           return (
-            <div key={step.id} className="flex items-center justify-between text-xs py-1">
-              <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              key={step.id}
+              className={`flex items-center justify-between text-xs py-1.5 px-3 rounded-xl transition-colors ${
+                status === "PROCESSING"
+                  ? "bg-blue-50/60 border border-blue-100"
+                  : "hover:bg-slate-50"
+              }`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
                 {/* Status Icon */}
                 <div className="shrink-0">
                   {status === "COMPLETED" ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   ) : status === "PROCESSING" ? (
-                    <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                    <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
                   ) : status === "PARTIAL" ? (
-                    <AlertTriangle className="w-4 h-4 text-amber-400" />
+                    <AlertTriangle className="w-4 h-4 text-amber-500" />
                   ) : status === "FAILED" ? (
-                    <XCircle className="w-4 h-4 text-rose-400" />
+                    <XCircle className="w-4 h-4 text-rose-500" />
                   ) : isSkipped || status === "SKIPPED" ? (
-                    <MinusCircle className="w-4 h-4 text-slate-600" />
+                    <MinusCircle className="w-4 h-4 text-slate-300" />
                   ) : (
-                    <Circle className="w-4 h-4 text-slate-600" />
+                    <Circle className="w-4 h-4 text-slate-300" />
                   )}
                 </div>
 
@@ -68,23 +81,23 @@ export const ProcessingTimeline: React.FC<ProcessingTimelineProps> = ({ steps })
                 <span
                   className={`font-medium ${
                     status === "COMPLETED"
-                      ? "text-slate-200"
+                      ? "text-slate-900"
                       : status === "PROCESSING"
-                      ? "text-blue-300"
+                      ? "text-blue-900 font-semibold"
                       : status === "PARTIAL"
-                      ? "text-amber-300"
+                      ? "text-amber-800 font-semibold"
                       : status === "FAILED"
-                      ? "text-rose-300"
+                      ? "text-rose-800"
                       : isSkipped || status === "SKIPPED"
-                      ? "text-slate-500"
-                      : "text-slate-400"
+                      ? "text-slate-400"
+                      : "text-slate-500"
                   }`}
                 >
                   {label}
                 </span>
 
                 {detail && (
-                  <span className="text-[11px] text-slate-500 hidden sm:inline truncate">
+                  <span className="text-[11px] text-slate-400 hidden sm:inline truncate">
                     ({detail})
                   </span>
                 )}
@@ -93,17 +106,21 @@ export const ProcessingTimeline: React.FC<ProcessingTimelineProps> = ({ steps })
               {/* Status Badge */}
               <div className="shrink-0 text-[11px]">
                 {status === "COMPLETED" ? (
-                  <span className="text-emerald-400 font-medium">✓ Selesai</span>
+                  <span className="text-emerald-700 font-medium flex items-center gap-1">
+                    ✓ Complete
+                  </span>
                 ) : status === "PROCESSING" ? (
-                  <span className="text-blue-400 font-medium">⟳ Memproses...</span>
+                  <span className="text-blue-700 font-medium flex items-center gap-1">
+                    ● Processing...
+                  </span>
                 ) : status === "PARTIAL" ? (
-                  <span className="text-amber-400 font-medium">Perlu Tinjauan</span>
+                  <span className="text-amber-700 font-medium">Needs Review</span>
                 ) : status === "FAILED" ? (
-                  <span className="text-rose-400 font-medium">✕ Gagal</span>
+                  <span className="text-rose-700 font-medium">× Failed</span>
                 ) : isSkipped || status === "SKIPPED" ? (
-                  <span className="text-slate-500 italic">— Skipped</span>
+                  <span className="text-slate-400 italic">— Skipped</span>
                 ) : (
-                  <span className="text-slate-600">○ Antrean</span>
+                  <span className="text-slate-400">○ Queued</span>
                 )}
               </div>
             </div>

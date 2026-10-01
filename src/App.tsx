@@ -9,12 +9,9 @@ import {
   ArrowRight,
   Shield,
   Layers,
-  Search,
   FileSpreadsheet,
   Clock,
   Loader2,
-  Sparkles,
-  Database,
   Landmark,
   RefreshCw,
   LogOut,
@@ -26,6 +23,11 @@ import {
   Unlock,
   Eye,
   EyeOff,
+  Menu,
+  ChevronRight,
+  Check,
+  Download,
+  Search,
 } from "lucide-react";
 import type {
   DocumentRecord,
@@ -92,123 +94,126 @@ const STAGE_DETAILS: Record<ProcessingStage, ProcessingStateInfo> = {
     stage: "IDLE",
     stepNumber: 0,
     label: "Ready",
-    detail: "Pilih file PDF untuk memulai inspeksi metadata.",
+    detail: "Choose a PDF file to begin metadata and statement inspection.",
   },
   UPLOADING: {
     stage: "UPLOADING",
     stepNumber: 1,
     label: "Uploading",
-    detail: "Mengunggah file PDF ke server...",
+    detail: "Transferring PDF file to server...",
   },
   ANALYZING: {
     stage: "ANALYZING",
     stepNumber: 2,
     label: "Analyzing",
-    detail: "Menganalisis tanda tangan berkas dan status enkripsi PDF...",
+    detail: "Analyzing file signature and encryption flags...",
   },
   VALIDATING: {
     stage: "VALIDATING",
     stepNumber: 1,
     label: "Validating PDF",
-    detail: "Memverifikasi tipe MIME, batas ukuran (≤ 20 MB), dan header %PDF-.",
+    detail: "Verifying MIME type, size limit (≤ 20 MB), and %PDF- header.",
   },
   READING: {
     stage: "READING",
     stepNumber: 2,
     label: "Reading PDF",
-    detail: "Membaca berkas PDF dan menyiapkan payload server.",
+    detail: "Reading document buffer and building payload...",
   },
   PASSWORD_REQUIRED: {
     stage: "PASSWORD_REQUIRED",
     stepNumber: 2,
     label: "Password Required",
-    detail: "Dokumen ini dilindungi password. Masukkan password PDF untuk melanjutkan analisis.",
+    detail: "This PDF is password protected. Enter password to continue analysis.",
   },
   DECRYPTING: {
     stage: "DECRYPTING",
     stepNumber: 3,
     label: "Decrypting",
-    detail: "Membuka enkripsi PDF secara aman di memori server...",
+    detail: "Decrypting document in memory...",
   },
   INSPECTING: {
     stage: "INSPECTING",
     stepNumber: 4,
     label: "Inspecting",
-    detail: "Mengekstrak metadata PDF, trailer dictionary, dan SHA-256...",
+    detail: "Extracting metadata properties, trailer dictionary, and SHA-256...",
   },
   EXTRACTING: {
     stage: "EXTRACTING",
     stepNumber: 3,
     label: "Extracting metadata",
-    detail: "Mengekstrak metadata dokumen dan jumlah halaman.",
+    detail: "Parsing document structure and page count...",
   },
   DETECTING: {
     stage: "DETECTING",
     stepNumber: 4,
     label: "Detecting Bank",
-    detail: "Mendeteksi institusi perbankan, periode laporan, dan nomor rekening...",
+    detail: "Identifying banking institution, period, and masked account...",
   },
   SAVING: {
     stage: "SAVING",
     stepNumber: 5,
     label: "Saving result",
-    detail: "Menyimpan data laporan dan mutasi rekening...",
+    detail: "Saving document records and statement metrics...",
   },
   EXTRACTING_TRANSACTIONS: {
     stage: "EXTRACTING_TRANSACTIONS",
     stepNumber: 5,
     label: "Extracting Transactions",
-    detail: "Mengekstrak transaksi, mutasi debit/kredit, dan rekonsiliasi saldo...",
+    detail: "Extracting transaction rows, debits, credits, and balance reconciliation...",
   },
   COMPLETED: {
     stage: "COMPLETED",
     stepNumber: 6,
     label: "Completed",
-    detail: "Analisis dokumen dan ekstraksi mutasi selesai.",
+    detail: "Document analysis and statement extraction completed.",
   },
   WRONG_PASSWORD: {
     stage: "WRONG_PASSWORD",
     stepNumber: 2,
     label: "Wrong Password",
-    detail: "Password PDF salah atau dokumen tidak dapat dibuka.",
+    detail: "The PDF password was incorrect or the document could not be opened.",
   },
   UNSUPPORTED_ENCRYPTION: {
     stage: "UNSUPPORTED_ENCRYPTION",
     stepNumber: 2,
     label: "Unsupported Encryption",
-    detail: "Jenis enkripsi PDF ini belum didukung.",
+    detail: "This PDF encryption standard is not supported.",
   },
   INVALID_PDF: {
     stage: "INVALID_PDF",
     stepNumber: 1,
     label: "Invalid PDF",
-    detail: "File PDF tidak valid atau kosong (0 bytes).",
+    detail: "The file is not a valid PDF or has 0 bytes.",
   },
   CANCELLED: {
     stage: "CANCELLED",
     stepNumber: 0,
     label: "Upload Cancelled",
-    detail: "Proses unggah telah dibatalkan oleh pengguna.",
+    detail: "Upload process was cancelled by user.",
   },
   ERROR: {
     stage: "ERROR",
     stepNumber: 0,
     label: "Processing Failed",
-    detail: "Terjadi kesalahan saat memproses dokumen.",
+    detail: "An error occurred while processing the document.",
   },
 };
+
+type NavigationTab = "dashboard" | "analyze" | "recent" | "exports" | "admin";
 
 interface MainWorkspaceProps {
   user: UserProfile;
   logout: () => Promise<void>;
-  activeTab: "workspace" | "users";
-  setActiveTab: (tab: "workspace" | "users") => void;
+  activeTab: NavigationTab;
+  setActiveTab: (tab: NavigationTab) => void;
 }
 
 function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceProps) {
   const [selectedRawFile, setSelectedRawFile] = useState<File | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Selected analysis features state
@@ -257,14 +262,15 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
   const fetchRecentFiles = useCallback(async () => {
     try {
       setLoadingRecent(true);
-      const res = await safeApiFetch<{ success: boolean; data: RecentDocumentItem[] }>("/api/documents/recent");
+      const res = await safeApiFetch<{ success: boolean; data: RecentDocumentItem[] }>(
+        "/api/documents/recent"
+      );
       if (res.ok && res.data?.success && Array.isArray(res.data.data)) {
         setRecentFiles(res.data.data);
       } else {
         setRecentFiles([]);
       }
     } catch {
-      // Fallback silently if API is unreachable
       setRecentFiles([]);
     } finally {
       setLoadingRecent(false);
@@ -286,22 +292,6 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
       state: "CANCELLED",
       statusText: "Upload cancelled",
     }));
-  };
-
-  /**
-   * Helper to convert a File into a base64 string
-   */
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        const base64 = result.split(",")[1] || result;
-        resolve(base64);
-      };
-      reader.onerror = (err) => reject(err);
-      reader.readAsDataURL(file);
-    });
   };
 
   /**
@@ -350,13 +340,13 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
         return false;
       }
     } catch {
-      setErrorMessage("Failed to inspect file signature. Please try another file.");
+      setErrorMessage("Failed to read the file header. Please ensure the file is not corrupted.");
       setSelectedRawFile(null);
       return false;
     }
 
-    // Validated successfully
     setSelectedRawFile(file);
+    setProcessingStage("IDLE");
     setUploadProgress({
       state: "SELECTED",
       loadedBytes: 0,
@@ -366,51 +356,46 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
       formattedSpeed: "0 KB/s",
       etaSeconds: null,
       formattedEta: "Calculating...",
-      statusText: "File selected",
+      statusText: "Ready to analyze",
     });
     return true;
   }, []);
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      await validateFile(file);
+    }
+  };
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    e.stopPropagation();
     setIsDragging(true);
   };
 
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleDragLeave = () => {
     setIsDragging(false);
   };
 
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
-    e.stopPropagation();
     setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      await validateFile(e.dataTransfer.files[0]);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      await validateFile(file);
     }
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      await validateFile(e.target.files[0]);
-    }
-  };
-
-  const handleClearFile = () => {
-    if (activeUploadRef.current) {
-      activeUploadRef.current.abort();
-      activeUploadRef.current = null;
-    }
+  const handleResetWorkflow = () => {
     setSelectedRawFile(null);
-    setErrorMessage(null);
-    setPasswordError(null);
-    setPdfPassword("");
-    setIsPasswordProtected(false);
+    setActiveResult(null);
     setBankDetectionResult(null);
     setTransactionExtractionResult(null);
     setProcessingStage("IDLE");
+    setPdfPassword("");
+    setPasswordError(null);
+    setIsPasswordProtected(false);
+    setErrorMessage(null);
     setUploadProgress({
       state: "IDLE",
       loadedBytes: 0,
@@ -427,20 +412,12 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
     }
   };
 
-  const handleResetWorkflow = () => {
-    if (activeUploadRef.current) {
-      activeUploadRef.current.abort();
-      activeUploadRef.current = null;
-    }
+  const handleClearFile = () => {
     setSelectedRawFile(null);
-    setActiveResult(null);
-    setBankDetectionResult(null);
-    setTransactionExtractionResult(null);
-    setErrorMessage(null);
-    setPasswordError(null);
-    setPdfPassword("");
-    setIsPasswordProtected(false);
     setProcessingStage("IDLE");
+    setPdfPassword("");
+    setPasswordError(null);
+    setIsPasswordProtected(false);
     setUploadProgress({
       state: "IDLE",
       loadedBytes: 0,
@@ -483,8 +460,8 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
           summary: {
             totalRowsDetected: txs.length,
             totalTransactionsParsed: txs.length,
-            totalTransactionsRejected: 0,
             totalTransactionsNeedingReview: 0,
+            totalTransactionsRejected: 0,
             totalCredit: res.data.statement.totalCredit?.toString() || "0.00",
             totalDebit: res.data.statement.totalDebit?.toString() || "0.00",
             openingBalance: res.data.statement.openingBalance?.toString() || null,
@@ -562,7 +539,6 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
         setBankDetectionResult(null);
       }
     } catch {
-      // Detection failure should not crash existing metadata view
       setBankDetectionResult(null);
     } finally {
       setIsDetectingBank(false);
@@ -629,14 +605,12 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
       ) {
         setIsPasswordProtected(true);
         if (passwordToUse) {
-          // A password was supplied, but server rejected it -> WRONG_PASSWORD
           setProcessingStage("WRONG_PASSWORD");
           setPasswordError(
             inspectRes.data?.error ||
-            "Password PDF salah atau dokumen tidak dapat dibuka. Pastikan password sesuai (contoh: tanggal lahir DDMMYYYY atau nomor rekening untuk mutasi bank)."
+            "Password PDF salah atau dokumen tidak dapat dibuka. Pastikan password sesuai."
           );
         } else {
-          // Document requires password
           setProcessingStage("PASSWORD_REQUIRED");
         }
         return;
@@ -748,7 +722,7 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
     if (e) e.preventDefault();
     const cleanPwd = pdfPassword ? pdfPassword.trim() : "";
     if (!cleanPwd) {
-      setPasswordError("Dokumen ini dilindungi password. Masukkan password PDF untuk melanjutkan analisis.");
+      setPasswordError("This document is password protected. Enter the password to continue.");
       return;
     }
     await executeProcessingPipeline(cleanPwd);
@@ -798,7 +772,7 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
         : processingStage === "COMPLETED" && !activeResult?.metadata
         ? "FAILED"
         : "PENDING",
-      detail: activeResult?.metadata?.pageCount ? `${activeResult.metadata.pageCount} halaman` : undefined,
+      detail: activeResult?.metadata?.pageCount ? `${activeResult.metadata.pageCount} pages` : undefined,
     },
     {
       id: "bankDetection",
@@ -830,7 +804,7 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
         : processingStage === "COMPLETED" && !transactionExtractionResult
         ? "FAILED"
         : "PENDING",
-      detail: transactionExtractionResult ? `${transactionExtractionResult.transactions.length} mutasi` : undefined,
+      detail: transactionExtractionResult ? `${transactionExtractionResult.transactions.length} transactions` : undefined,
     },
     {
       id: "validation",
@@ -862,701 +836,1027 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
     },
   ];
 
-  const workflowSteps = [
-    {
-      id: "upload",
-      number: "01",
-      name: "UPLOAD PDF",
-      status: activeResult ? "COMPLETED" : "CURRENT",
-      description: "Select & validate PDF file",
-      icon: UploadCloud,
-    },
-    {
-      id: "metadata",
-      number: "02",
-      name: "METADATA",
-      status:
-        isProcessing &&
-        (processingStage === "VALIDATING" ||
-          processingStage === "READING" ||
-          processingStage === "EXTRACTING")
-          ? "CURRENT"
-          : activeResult
-          ? "COMPLETED"
-          : "UPCOMING",
-      description: "Extract header & SHA-256",
-      icon: Search,
-    },
-    {
-      id: "detect",
-      number: "03",
-      name: "DETECT BANK",
-      status:
-        isProcessing && (processingStage === "DETECTING" || processingStage === "SAVING")
-          ? "CURRENT"
-          : activeResult
-          ? "COMPLETED"
-          : "UPCOMING",
-      description: "Identify bank & period",
-      icon: Landmark,
-    },
-    {
-      id: "export",
-      number: "04",
-      name: "TRANSACTIONS",
-      status:
-        isProcessing && processingStage === "EXTRACTING_TRANSACTIONS"
-          ? "CURRENT"
-          : transactionExtractionResult
-          ? "COMPLETED"
-          : "UPCOMING",
-      description: "Extract, reconcile & review",
-      icon: FileSpreadsheet,
-    },
-  ];
+  const handleSelectRecentDoc = (doc: RecentDocumentItem) => {
+    if (doc.metadata) {
+      setActiveResult({
+        document: doc,
+        metadata: doc.metadata,
+        isDuplicate: false,
+      });
+      triggerBankDetection(doc.id);
+      fetchExistingTransactions(doc.id);
+      setActiveTab("analyze");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-neutral-50 text-neutral-900 flex flex-col font-sans antialiased">
-      {/* Header */}
-      <header className="bg-white border-b border-neutral-200 sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-neutral-900 flex items-center justify-center text-white shadow-xs">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased">
+      {/* GLOBAL APPLICATION SHELL HEADER */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          {/* Brand Logo & Name */}
+          <div className="flex items-center gap-8">
+            <button
+              type="button"
+              onClick={() => setActiveTab("dashboard")}
+              className="flex items-center gap-3 text-left cursor-pointer group"
+            >
+              <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs transition-transform group-hover:scale-105">
                 <FileText className="w-5 h-5" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-base tracking-tight text-neutral-950">
-                    Metadata Checker
-                  </span>
-                  <span className="text-[11px] font-medium bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded border border-neutral-200">
-                    Engine v1.0
-                  </span>
-                </div>
-                <p className="text-[11px] text-neutral-500 hidden sm:block">
-                  PDF Metadata &amp; Bank Statement Analyzer
-                </p>
+                <span className="font-bold text-base tracking-tight text-slate-900 block leading-tight">
+                  Metadata Checker
+                </span>
+                <span className="text-[11px] text-slate-500 font-medium block">
+                  Document Intelligence
+                </span>
               </div>
-            </div>
+            </button>
 
-            {/* Navigation tabs for Admin */}
-            {user.role === "ADMIN" && (
-              <nav className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("workspace")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                    activeTab === "workspace"
-                      ? "bg-white text-slate-900 shadow-xs"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  <LayoutDashboard className="w-3.5 h-3.5" />
-                  <span>Workspace</span>
-                </button>
+            {/* Desktop Navigation Links */}
+            <nav className="hidden md:flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setActiveTab("dashboard")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                  activeTab === "dashboard"
+                    ? "bg-slate-100 text-slate-900"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                }`}
+              >
+                Dashboard
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("analyze")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                  activeTab === "analyze"
+                    ? "bg-slate-100 text-slate-900"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                }`}
+              >
+                Analyze PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("recent")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                  activeTab === "recent"
+                    ? "bg-slate-100 text-slate-900"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                }`}
+              >
+                Recent Files
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("exports")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                  activeTab === "exports"
+                    ? "bg-slate-100 text-slate-900"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                }`}
+              >
+                Exports
+              </button>
+              {user.role === "ADMIN" && (
                 <button
                   id="admin-nav-users-tab"
                   type="button"
-                  onClick={() => setActiveTab("users")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                    activeTab === "users"
-                      ? "bg-white text-slate-900 shadow-xs"
-                      : "text-slate-600 hover:text-slate-900"
+                  onClick={() => setActiveTab("admin")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === "admin"
+                      ? "bg-purple-50 text-purple-700 font-bold"
+                      : "text-purple-600 hover:bg-purple-50"
                   }`}
                 >
-                  <Users className="w-3.5 h-3.5" />
-                  <span>Users &amp; RBAC</span>
+                  <Shield className="w-3.5 h-3.5" />
+                  <span>Admin</span>
                 </button>
-              </nav>
-            )}
+              )}
+            </nav>
           </div>
 
+          {/* Right Section: User Identity & Actions */}
           <div className="flex items-center gap-3">
-            <span className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs">
-              <Database className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Neon PostgreSQL Connected</span>
-            </span>
-
-            {/* User profile capsule & Sign Out */}
-            <div className="flex items-center gap-2.5 pl-2 border-l border-slate-200">
-              <div className="text-right hidden sm:block">
-                <div className="text-xs font-semibold text-slate-900 leading-tight">
-                  {user.name || user.email.split("@")[0]}
-                </div>
-                <div className="flex items-center justify-end gap-1 mt-0.5">
-                  <span
-                    className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded ${
-                      user.role === "ADMIN"
-                        ? "bg-amber-100 text-amber-800"
-                        : "bg-slate-100 text-slate-700"
-                    }`}
-                  >
-                    {user.role}
-                  </span>
-                </div>
-              </div>
-
-              <button
-                id="sign-out-button"
-                type="button"
-                onClick={() => logout()}
-                title="Sign Out"
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-red-700 hover:bg-red-50 rounded-lg border border-slate-200 hover:border-red-200 transition-colors cursor-pointer"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Sign Out</span>
-              </button>
+            <div className="hidden sm:flex flex-col text-right pr-2">
+              <span className="text-xs font-semibold text-slate-900 leading-tight">
+                {user.name || user.email.split("@")[0]}
+              </span>
+              <span className="text-[11px] text-slate-500 font-mono">
+                {user.email}
+              </span>
             </div>
+
+            <button
+              id="sign-out-button"
+              type="button"
+              onClick={() => logout()}
+              title="Sign Out"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sign Out</span>
+            </button>
+
+            {/* Mobile menu toggle */}
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 text-slate-600 hover:text-slate-900 rounded-lg border border-slate-200 cursor-pointer"
+              aria-label="Toggle navigation menu"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
           </div>
         </div>
+
+        {/* Mobile Navigation Dropdown */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-slate-200 bg-white px-4 py-3 space-y-1">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("dashboard");
+                setMobileMenuOpen(false);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100"
+            >
+              Dashboard
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("analyze");
+                setMobileMenuOpen(false);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100"
+            >
+              Analyze PDF
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("recent");
+                setMobileMenuOpen(false);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100"
+            >
+              Recent Files
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("exports");
+                setMobileMenuOpen(false);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100"
+            >
+              Exports
+            </button>
+            {user.role === "ADMIN" && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("admin");
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-purple-700 hover:bg-purple-50"
+              >
+                Admin Console
+              </button>
+            )}
+          </div>
+        )}
       </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-8">
-        {activeTab === "users" && user.role === "ADMIN" ? (
-          <AdminUserManagement />
-        ) : (
-          <>
-            {/* Title & Short Explanation */}
-        <section className="text-center max-w-2xl mx-auto space-y-2">
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-neutral-950">
-            PDF Metadata &amp; Bank Statement Analyzer
-          </h1>
-          <p className="text-sm text-neutral-600 leading-relaxed">
-            Upload any PDF bank statement to detect Indonesian financial institutions, extract statement periods, inspect metadata, and verify SHA-256 audit records.
-          </p>
-        </section>
-
-        {/* Primary Workflow Stepper */}
-        <section className="bg-white border border-neutral-200 rounded-xl p-4 sm:p-5 shadow-xs">
-          <div className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider mb-3 text-center sm:text-left">
-            Primary Processing Workflow
+      {/* MAIN VIEW CONTAINER */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+        {/* ============================================================== */}
+        {/* VIEW 1: ADMIN CONSOLE */}
+        {/* ============================================================== */}
+        {activeTab === "admin" && user.role === "ADMIN" && (
+          <div className="space-y-6">
+            <AdminUserManagement />
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {workflowSteps.map((step, idx) => {
-              const Icon = step.icon;
-              const isCurrent = step.status === "CURRENT";
-              const isCompleted = step.status === "COMPLETED";
-              return (
-                <div
-                  key={step.id}
-                  className={`p-3.5 rounded-lg border transition-all ${
-                    isCurrent
-                      ? "bg-neutral-900 text-white border-neutral-900 shadow-xs"
-                      : isCompleted
-                      ? "bg-emerald-50/60 text-emerald-900 border-emerald-200"
-                      : "bg-neutral-50/60 text-neutral-600 border-neutral-200/70"
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span
-                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-semibold ${
-                        isCurrent
-                          ? "bg-neutral-800 text-neutral-200"
-                          : isCompleted
-                          ? "bg-emerald-200/80 text-emerald-900"
-                          : "bg-neutral-200 text-neutral-700"
-                      }`}
-                    >
-                      {step.number}
-                    </span>
-                    <Icon
-                      className={`w-4 h-4 ${
-                        isCurrent
-                          ? "text-neutral-200"
-                          : isCompleted
-                          ? "text-emerald-700"
-                          : "text-neutral-400"
-                      }`}
-                    />
-                  </div>
-                  <div className="font-bold text-xs tracking-tight flex items-center gap-1.5">
-                    <span>{step.name}</span>
-                    {idx < workflowSteps.length - 1 && (
-                      <span className="text-[10px] opacity-40 ml-auto hidden lg:inline">→</span>
-                    )}
-                  </div>
-                  <p
-                    className={`text-[11px] mt-1 line-clamp-1 ${
-                      isCurrent
-                        ? "text-neutral-300"
-                        : isCompleted
-                        ? "text-emerald-700"
-                        : "text-neutral-500"
-                    }`}
-                  >
-                    {step.description}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        </section>
+        )}
 
-        {/* Dynamic Display: Document Analysis & Metadata Result Card OR Upload Area */}
-        {activeResult ? (
-          <section className="space-y-6 animate-in fade-in duration-200">
-            {/* Top Action Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border border-neutral-200 shadow-xs">
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-                  Active Document
-                </span>
-                <span className="text-sm font-bold text-neutral-900 font-mono">
-                  {activeResult.document.originalFileName}
-                </span>
+        {/* ============================================================== */}
+        {/* VIEW 2: RECENT FILES DEDICATED PAGE */}
+        {/* ============================================================== */}
+        {activeTab === "recent" && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+                  Recent Files
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                  Access your previously analyzed PDF statements and historical reports.
+                </p>
               </div>
+
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => triggerBankDetection(activeResult.document.id)}
-                  disabled={isDetectingBank}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 text-xs font-medium text-neutral-700 transition-colors cursor-pointer"
+                  onClick={fetchRecentFiles}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isDetectingBank ? "animate-spin" : ""}`} />
-                  Re-run Bank Detection
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingRecent ? "animate-spin" : ""}`} />
+                  Refresh
                 </button>
                 <button
                   type="button"
-                  onClick={handleResetWorkflow}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-medium transition-colors cursor-pointer shadow-xs"
+                  onClick={() => setActiveTab("analyze")}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors cursor-pointer"
                 >
-                  Upload Another File
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  Analyze New PDF
                 </button>
               </div>
             </div>
 
-            {/* Processing Timeline (Part L) */}
-            <ProcessingTimeline steps={timelineSteps} />
+            <RecentFilesTable
+              documents={recentFiles}
+              loading={loadingRecent}
+              onSelectDocument={handleSelectRecentDoc}
+              onAnalyzeNew={() => setActiveTab("analyze")}
+            />
+          </div>
+        )}
 
-            {/* Document Analysis Section (Bank Detection) */}
-            {(selectedFeatures.includes("bankDetection") || bankDetectionResult) && (
-              <BankAnalysisCard
-                detection={bankDetectionResult}
-                isLoading={isDetectingBank}
-              />
-            )}
+        {/* ============================================================== */}
+        {/* VIEW 3: EXPORTS DEDICATED PAGE */}
+        {/* ============================================================== */}
+        {activeTab === "exports" && (
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+                Excel Exports
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                Download structured Excel workbooks with transactions, reconciliation, and audit sheets.
+              </p>
+            </div>
 
-            {/* Transaction Extraction Engine Section */}
-            {(selectedFeatures.includes("transactionExtraction") || transactionExtractionResult) &&
-              activeResult.document.documentType !== "OTHER_PDF" && (
-              <TransactionExtractionCard
-                extraction={transactionExtractionResult}
-                isLoading={isExtractingTransactions}
-                onExtractTransactions={() =>
-                  triggerTransactionExtraction(activeResult.document.id)
-                }
-                documentId={activeResult.document.id}
-                isScannedOrImageOnly={bankDetectionResult?.isScannedOrImageOnly}
-              />
-            )}
-
-            {/* Bank Statement Excel Export Engine Section */}
-            {(selectedFeatures.includes("excelExport") || transactionExtractionResult) &&
-              activeResult.document.documentType !== "OTHER_PDF" && (
+            {activeResult ? (
               <ExcelExportCard
                 documentId={activeResult.document.id}
                 extraction={transactionExtractionResult}
                 isExtractingTransactions={isExtractingTransactions}
                 isScannedOrImageOnly={bankDetectionResult?.isScannedOrImageOnly}
               />
-            )}
-
-            {/* PDF Metadata Inspector Section */}
-            {(selectedFeatures.includes("metadata") || activeResult.metadata) && activeResult.metadata && (
-              <MetadataResultCard
-                document={activeResult.document}
-                metadata={activeResult.metadata}
-                isDuplicate={activeResult.isDuplicate}
-                onReset={handleResetWorkflow}
-              />
-            )}
-          </section>
-        ) : (
-          <section className="space-y-6">
-            {/* Feature Selection (Part F, G, H) */}
-            <AnalysisFeatureSelector
-              selectedFeatures={selectedFeatures}
-              onChange={setSelectedFeatures}
-              disabled={isProcessing}
-            />
-
-            <div className="bg-white border border-neutral-200 rounded-2xl p-6 sm:p-8 shadow-xs">
-              {/* Error Notification */}
-              {errorMessage && (
-                <div
-                  role="alert"
-                  className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 flex items-start gap-3 text-xs sm:text-sm animate-in fade-in duration-200"
-                >
-                  <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-                  <div className="space-y-0.5 flex-1">
-                    <div className="font-semibold text-rose-900">Validation Error</div>
-                    <div>{errorMessage}</div>
+            ) : recentFiles.length > 0 ? (
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-7 shadow-xs space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 flex items-center justify-center shrink-0">
+                    <FileSpreadsheet className="w-5 h-5" />
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setErrorMessage(null)}
-                    className="text-rose-500 hover:text-rose-700 p-0.5 cursor-pointer"
-                    aria-label="Dismiss error"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-
-              {/* Drag and Drop Zone */}
-              <div
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                onClick={() => !isProcessing && fileInputRef.current?.click()}
-                className={`relative border-2 border-dashed rounded-xl p-8 sm:p-12 text-center transition-all duration-150 ${
-                  isProcessing
-                    ? "border-neutral-300 bg-neutral-50 cursor-wait opacity-80"
-                    : isDragging
-                    ? "border-neutral-900 bg-neutral-100/80 scale-[0.99] cursor-pointer"
-                    : selectedRawFile
-                    ? "border-emerald-500 bg-emerald-50/20 cursor-pointer"
-                    : "border-neutral-300 hover:border-neutral-400 bg-neutral-50/50 cursor-pointer"
-                }`}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  onChange={handleFileChange}
-                  disabled={isProcessing}
-                  className="hidden"
-                  id="pdf-file-upload-input"
-                />
-
-                <div className="flex flex-col items-center justify-center space-y-4 max-w-md mx-auto">
-                  <div
-                    className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${
-                      isProcessing
-                        ? "bg-neutral-900 text-white"
-                        : selectedRawFile
-                        ? "bg-emerald-100 text-emerald-700"
-                        : isDragging
-                        ? "bg-neutral-900 text-white"
-                        : "bg-neutral-100 text-neutral-700"
-                    }`}
-                  >
-                    {isProcessing ? (
-                      <Loader2 className="w-7 h-7 animate-spin" />
-                    ) : selectedRawFile ? (
-                      <CheckCircle2 className="w-7 h-7" />
-                    ) : (
-                      <UploadCloud className="w-7 h-7" />
-                    )}
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <h3 className="text-base sm:text-lg font-semibold text-neutral-900">
-                      {isProcessing
-                        ? STAGE_DETAILS[processingStage].label
-                        : selectedRawFile
-                        ? "PDF Document Ready for Inspection"
-                        : isDragging
-                        ? "Drop your PDF file here"
-                        : "Upload your PDF bank statement"}
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      Select a Document to Export
                     </h3>
-                    <p className="text-xs sm:text-sm text-neutral-500">
-                      {isProcessing
-                        ? STAGE_DETAILS[processingStage].detail
-                        : "Drag and drop your file here, or click to browse from your device"}
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Choose an analyzed statement from your ledger below to generate or download an Excel workbook.
                     </p>
                   </div>
+                </div>
 
-                  {/* Processing Stepper Display during active extraction */}
-                  {isProcessing && (
-                    <div className="w-full pt-2">
-                      <div className="bg-neutral-100 rounded-lg p-3 border border-neutral-200/80 space-y-2 text-left">
-                        <div className="flex items-center justify-between text-xs font-semibold text-neutral-800">
-                          <span className="flex items-center gap-2">
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-neutral-900" />
-                            Step {STAGE_DETAILS[processingStage].stepNumber} of 6:{" "}
-                            {STAGE_DETAILS[processingStage].label}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-neutral-600">
-                          {STAGE_DETAILS[processingStage].detail}
-                        </div>
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                  {recentFiles.slice(0, 5).map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <FileText className="w-4 h-4 text-slate-400 shrink-0" />
+                        <span className="text-xs font-semibold text-slate-900 truncate">
+                          {doc.originalFileName}
+                        </span>
+                        <span className="text-[11px] text-slate-500 hidden sm:inline">
+                          · {doc.statement?.bankName || "Document"}
+                        </span>
                       </div>
-                    </div>
-                  )}
-
-                  {!isProcessing && (
-                    <div className="pt-2">
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          fileInputRef.current?.click();
-                        }}
-                        className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-neutral-900 text-white text-xs sm:text-sm font-medium hover:bg-neutral-800 transition-colors shadow-xs cursor-pointer"
+                        onClick={() => handleSelectRecentDoc(doc)}
+                        className="px-3 py-1 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
                       >
-                        <UploadCloud className="w-4 h-4 mr-2" />
-                        {selectedRawFile ? "Change PDF File" : "Select PDF Document"}
+                        Open &amp; Export
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center shadow-xs space-y-3">
+                <FileSpreadsheet className="w-10 h-10 text-slate-300 mx-auto" />
+                <h3 className="text-sm font-semibold text-slate-900">No Exportable Statements</h3>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  Analyze a PDF bank statement first to extract transactions and download your Excel workbook.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("analyze")}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-semibold hover:bg-blue-700 cursor-pointer shadow-xs"
+                >
+                  Analyze PDF
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* VIEW 4: HOME / DASHBOARD (Section 4) */}
+        {/* ============================================================== */}
+        {activeTab === "dashboard" && (
+          <div className="space-y-12 animate-in fade-in duration-200">
+            {/* HERO SECTION */}
+            <section className="text-center max-w-3xl mx-auto space-y-4 pt-4 sm:pt-6">
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-slate-900">
+                Analyze Your Financial Documents Smarter
+              </h1>
+              <p className="text-base sm:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
+                Upload a PDF bank statement, choose the analysis you need, and get structured insights in seconds.
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("analyze")}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-xs transition-colors cursor-pointer"
+                >
+                  <span>Analyze PDF</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("recent")}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-sm font-semibold shadow-xs transition-colors cursor-pointer"
+                >
+                  <span>View Recent Files</span>
+                </button>
+              </div>
+            </section>
+
+            {/* WORKFLOW EXPLANATION: 01 to 05 */}
+            <section className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
+              <div className="text-center max-w-md mx-auto space-y-1">
+                <span className="text-[11px] font-semibold text-blue-600 uppercase tracking-wider block">
+                  Workflow Guide
+                </span>
+                <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+                  How Metadata Checker Works
+                </h2>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                {[
+                  {
+                    num: "01",
+                    title: "Upload PDF",
+                    desc: "Drag & drop PDF bank statements up to 20 MB with SHA-256 integrity validation.",
+                    icon: UploadCloud,
+                  },
+                  {
+                    num: "02",
+                    title: "Choose Analysis",
+                    desc: "Select specific engines: metadata, bank detection, transactions, or validation.",
+                    icon: Layers,
+                  },
+                  {
+                    num: "03",
+                    title: "Process Securely",
+                    desc: "Encrypted PDFs decrypted in-memory with zero persistent credentials.",
+                    icon: ShieldCheck,
+                  },
+                  {
+                    num: "04",
+                    title: "Review Results",
+                    desc: "Inspect metadata, detected Indonesian bank, and transaction records.",
+                    icon: CheckCircle2,
+                  },
+                  {
+                    num: "05",
+                    title: "Export Data",
+                    desc: "Download structured 4-sheet Excel workbook ready for audit and accounting.",
+                    icon: FileSpreadsheet,
+                  },
+                ].map((step, idx) => {
+                  const Icon = step.icon;
+                  return (
+                    <div
+                      key={step.num}
+                      className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/50 space-y-2.5 relative group hover:bg-white hover:border-slate-300 transition-all"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+                          {step.num}
+                        </span>
+                        <Icon className="w-4 h-4 text-slate-400 group-hover:text-blue-600 transition-colors" />
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-900 tracking-tight">
+                        {step.title}
+                      </h3>
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        {step.desc}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* FEATURE SECTION: "Everything You Need" */}
+            <section className="space-y-6">
+              <div className="text-center max-w-md mx-auto space-y-1">
+                <span className="text-[11px] font-semibold text-blue-600 uppercase tracking-wider block">
+                  Comprehensive Platform
+                </span>
+                <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                  Everything You Need
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Built specifically for Indonesian bank statements and financial compliance.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[
+                  {
+                    title: "PDF Metadata",
+                    desc: "Inspect PDF creator, producer, dates, page count, and cryptographic SHA-256 fingerprint.",
+                    icon: FileText,
+                  },
+                  {
+                    title: "Bank Detection",
+                    desc: "Identify Indonesian institutions (BNI, BCA, BRI, Mandiri) and masked account information.",
+                    icon: Landmark,
+                  },
+                  {
+                    title: "Transaction Extraction",
+                    desc: "Extract transaction dates, descriptions, debit, credit and balance into structured data.",
+                    icon: Layers,
+                  },
+                  {
+                    title: "Balance Validation",
+                    desc: "Validate balance continuity, opening/closing delta reconciliation, and mathematical truth.",
+                    icon: ShieldCheck,
+                  },
+                  {
+                    title: "Excel Export",
+                    desc: "Export analysis results into a structured, audit-ready Excel workbook with multiple tabs.",
+                    icon: FileSpreadsheet,
+                  },
+                  {
+                    title: "Password Protection",
+                    desc: "In-memory decryption with zero persistent passwords, supporting encrypted Indonesian statements.",
+                    icon: Lock,
+                  },
+                ].map((feat) => {
+                  const Icon = feat.icon;
+                  return (
+                    <div
+                      key={feat.title}
+                      className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-2 hover:border-slate-300 transition-all"
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-900 tracking-tight">
+                        {feat.title}
+                      </h3>
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        {feat.desc}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* RECENT FILES PREVIEW */}
+            {recentFiles.length > 0 && (
+              <section className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-slate-700">
+                    Recent Files Preview
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("recent")}
+                    className="text-xs font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
+                  >
+                    View All ({recentFiles.length})
+                  </button>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs divide-y divide-slate-100">
+                  {recentFiles.slice(0, 3).map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="p-4 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-900 truncate" title={doc.originalFileName}>
+                            {doc.originalFileName}
+                          </p>
+                          <span className="text-[11px] text-slate-400">
+                            {formatBytes(doc.fileSize)} · {doc.statement?.bankName || "PDF"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSelectRecentDoc(doc)}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors cursor-pointer shrink-0"
+                      >
+                        <span>View</span>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* VIEW 5: ANALYZE PDF DEDICATED WORKSPACE (Sections 5-17) */}
+        {/* ============================================================== */}
+        {activeTab === "analyze" && (
+          <div className="space-y-8 animate-in fade-in duration-200">
+            {/* Top Workspace Header */}
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+                Analyze PDF
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                Upload a bank statement and select the analysis you need.
+              </p>
+            </div>
+
+            {/* RESULTS STATE (Section 11) */}
+            {activeResult ? (
+              <section className="space-y-6 animate-in fade-in duration-200">
+                {/* Top Action Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                          Active Document
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                          ✓ Completed
+                        </span>
+                      </div>
+                      <p className="text-sm font-bold text-slate-900 truncate font-mono mt-0.5" title={activeResult.document.originalFileName}>
+                        {activeResult.document.originalFileName}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => triggerBankDetection(activeResult.document.id)}
+                      disabled={isDetectingBank}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isDetectingBank ? "animate-spin" : ""}`} />
+                      Re-run Bank Detection
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleResetWorkflow}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition-colors cursor-pointer shadow-xs"
+                    >
+                      <UploadCloud className="w-3.5 h-3.5" />
+                      Upload Another File
+                    </button>
+                  </div>
+                </div>
+
+                {/* Compact Summary Bar (Section 11) */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-xs">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block">
+                      Document
+                    </span>
+                    <span className="text-xs font-bold text-slate-900 truncate block mt-0.5">
+                      {bankDetectionResult?.bankName || "PDF Document"}
+                    </span>
+                  </div>
+                  <div className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-xs">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block">
+                      Period
+                    </span>
+                    <span className="text-xs font-medium text-slate-700 font-mono truncate block mt-0.5">
+                      {bankDetectionResult?.statementPeriodStart && bankDetectionResult?.statementPeriodEnd
+                        ? `${bankDetectionResult.statementPeriodStart} to ${bankDetectionResult.statementPeriodEnd}`
+                        : "—"}
+                    </span>
+                  </div>
+                  <div className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-xs">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block">
+                      Transactions
+                    </span>
+                    <span className="text-xs font-bold text-slate-900 block mt-0.5">
+                      {transactionExtractionResult?.transactions?.length ?? 0} rows
+                    </span>
+                  </div>
+                  <div className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-xs">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block">
+                      Status
+                    </span>
+                    <span className="text-xs font-semibold text-emerald-700 block mt-0.5">
+                      {transactionExtractionResult?.summary?.balanceReconciliationStatus === "VALID"
+                        ? "Validated & Reconciled"
+                        : "Processed"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Processing Timeline (Section 10) */}
+                <ProcessingTimeline steps={timelineSteps} />
+
+                {/* Bank Detection Result Card (Section 13) */}
+                {(selectedFeatures.includes("bankDetection") || bankDetectionResult) && (
+                  <BankAnalysisCard
+                    detection={bankDetectionResult}
+                    isLoading={isDetectingBank}
+                  />
+                )}
+
+                {/* Transaction Extraction & Balance Validation Card (Sections 14, 15, 16) */}
+                {(selectedFeatures.includes("transactionExtraction") || transactionExtractionResult) &&
+                  activeResult.document.documentType !== "OTHER_PDF" && (
+                  <TransactionExtractionCard
+                    extraction={transactionExtractionResult}
+                    isLoading={isExtractingTransactions}
+                    onExtractTransactions={() =>
+                      triggerTransactionExtraction(activeResult.document.id)
+                    }
+                    documentId={activeResult.document.id}
+                    isScannedOrImageOnly={bankDetectionResult?.isScannedOrImageOnly}
+                  />
+                )}
+
+                {/* Bank Statement Excel Export Engine Section (Section 17) */}
+                {(selectedFeatures.includes("excelExport") || transactionExtractionResult) &&
+                  activeResult.document.documentType !== "OTHER_PDF" && (
+                  <ExcelExportCard
+                    documentId={activeResult.document.id}
+                    extraction={transactionExtractionResult}
+                    isExtractingTransactions={isExtractingTransactions}
+                    isScannedOrImageOnly={bankDetectionResult?.isScannedOrImageOnly}
+                  />
+                )}
+
+                {/* PDF Metadata Inspector Section (Section 12) */}
+                {(selectedFeatures.includes("metadata") || activeResult.metadata) && activeResult.metadata && (
+                  <MetadataResultCard
+                    document={activeResult.document}
+                    metadata={activeResult.metadata}
+                    isDuplicate={activeResult.isDuplicate}
+                    onReset={handleResetWorkflow}
+                  />
+                )}
+              </section>
+            ) : (
+              /* UPLOAD & CONFIGURATION WORKSPACE (Sections 5-10) */
+              <section className="space-y-6">
+                {/* FEATURE SELECTION (Section 7) */}
+                <AnalysisFeatureSelector
+                  selectedFeatures={selectedFeatures}
+                  onChange={setSelectedFeatures}
+                  disabled={isProcessing}
+                />
+
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
+                  {/* Validation Error Alert */}
+                  {errorMessage && (
+                    <div
+                      role="alert"
+                      className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 flex items-start gap-3 text-xs sm:text-sm animate-in fade-in duration-200"
+                    >
+                      <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5 flex-1">
+                        <div className="font-semibold text-rose-950">Validation Error</div>
+                        <div>{errorMessage}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setErrorMessage(null)}
+                        className="text-rose-500 hover:text-rose-700 p-0.5 cursor-pointer"
+                        aria-label="Dismiss error"
+                      >
+                        <X className="w-4 h-4" />
                       </button>
                     </div>
                   )}
 
-                  <div className="pt-2 text-[11px] text-neutral-400 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
-                    <span>Allowed format: PDF only</span>
-                    <span>•</span>
-                    <span>Max file size: 20 MB</span>
-                    <span>•</span>
-                    <span>Signature: %PDF- verified</span>
-                  </div>
-                </div>
-              </div>
+                  {/* Drag and Drop Zone (Section 5) */}
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    onClick={() => !isProcessing && fileInputRef.current?.click()}
+                    className={`relative border-2 border-dashed rounded-2xl p-8 sm:p-12 text-center transition-all duration-150 cursor-pointer ${
+                      isProcessing
+                        ? "border-slate-300 bg-slate-50 cursor-wait opacity-80"
+                        : isDragging
+                        ? "border-blue-600 bg-blue-50/50 scale-[0.99]"
+                        : selectedRawFile
+                        ? "border-emerald-500 bg-emerald-50/20"
+                        : "border-slate-300 hover:border-slate-400 bg-slate-50/50 hover:bg-slate-50"
+                    }`}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      onChange={handleFileChange}
+                      disabled={isProcessing}
+                      className="hidden"
+                      id="pdf-file-upload-input"
+                    />
 
-              {/* Selected File Card Details with Action Button */}
-              {selectedRawFile && (
-                <div className="mt-6 p-4 sm:p-5 rounded-xl border border-neutral-200 bg-neutral-50/70 space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                        <FileText className="w-5 h-5" />
+                    <div className="flex flex-col items-center justify-center space-y-4 max-w-md mx-auto">
+                      <div
+                        className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${
+                          isProcessing
+                            ? "bg-slate-900 text-white"
+                            : selectedRawFile
+                            ? "bg-emerald-100 text-emerald-700"
+                            : isDragging
+                            ? "bg-blue-600 text-white"
+                            : "bg-blue-50 text-blue-600 border border-blue-100"
+                        }`}
+                      >
+                        {isProcessing ? (
+                          <Loader2 className="w-7 h-7 animate-spin" />
+                        ) : selectedRawFile ? (
+                          <CheckCircle2 className="w-7 h-7" />
+                        ) : (
+                          <UploadCloud className="w-7 h-7" />
+                        )}
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-neutral-900 truncate">
-                          {selectedRawFile.name}
-                        </p>
-                        <p className="text-xs text-neutral-500">
-                          {formatBytes(selectedRawFile.size)} • PDF Document
-                        </p>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      {isPasswordProtected ||
-                      processingStage === "PASSWORD_REQUIRED" ||
-                      processingStage === "WRONG_PASSWORD" ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
-                          <Lock className="w-3.5 h-3.5" />
-                          PDF Protected
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          Valid PDF (≤ 20 MB)
-                        </span>
-                      )}
+                      <div className="space-y-1.5">
+                        <h3 className="text-base sm:text-lg font-semibold text-slate-900">
+                          {isProcessing
+                            ? STAGE_DETAILS[processingStage].label
+                            : selectedRawFile
+                            ? "PDF Document Ready"
+                            : isDragging
+                            ? "Drop your PDF file here"
+                            : "Drop your PDF here"}
+                        </h3>
+                        <p className="text-xs sm:text-sm text-slate-500">
+                          {isProcessing
+                            ? STAGE_DETAILS[processingStage].detail
+                            : "or choose a file from your device"}
+                        </p>
+                      </div>
+
                       {!isProcessing && (
-                        <button
-                          type="button"
-                          onClick={handleClearFile}
-                          className="text-xs text-neutral-500 hover:text-rose-600 px-2.5 py-1 rounded-md hover:bg-neutral-200/60 transition-colors cursor-pointer"
-                        >
-                          Remove
-                        </button>
+                        <div className="pt-2">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              fileInputRef.current?.click();
+                            }}
+                            className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-slate-900 text-white text-xs sm:text-sm font-semibold hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
+                          >
+                            <UploadCloud className="w-4 h-4 mr-2" />
+                            {selectedRawFile ? "Change File" : "Choose PDF Document"}
+                          </button>
+                        </div>
                       )}
+
+                      <div className="pt-2 text-[11px] text-slate-400 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+                        <span>Maximum file size: 20 MB</span>
+                        <span>•</span>
+                        <span>Allowed format: PDF only</span>
+                        <span>•</span>
+                        <span>Signature: %PDF- verified</span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Password Protection UI Prompt (Requirement 2 & 11) */}
-                  {(isPasswordProtected ||
-                    processingStage === "PASSWORD_REQUIRED" ||
-                    processingStage === "WRONG_PASSWORD") && (
-                    <div className="p-4 sm:p-5 rounded-xl border border-amber-300 bg-amber-50/90 space-y-3.5 shadow-xs animate-in fade-in duration-200">
-                      <div className="flex items-start gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-amber-200 text-amber-900 flex items-center justify-center shrink-0">
-                          <KeyRound className="w-5 h-5 text-amber-800" />
+                  {/* FILE SELECTED PREVIEW CARD (Section 6) */}
+                  {selectedRawFile && (
+                    <div className="p-4 sm:p-5 rounded-2xl border border-slate-200 bg-slate-50/80 space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-100">
+                            <FileText className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs sm:text-sm font-bold text-slate-900 truncate" title={selectedRawFile.name}>
+                              {selectedRawFile.name}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              PDF Document · {formatBytes(selectedRawFile.size)} · Status: <span className="text-emerald-700 font-medium">Ready to analyze</span>
+                            </p>
+                          </div>
                         </div>
-                        <div className="space-y-1">
-                          <h4 className="text-sm font-bold text-amber-950 flex items-center gap-2">
-                            PDF Protected
-                          </h4>
-                          <p className="text-xs text-amber-900/90 leading-relaxed">
-                            Dokumen ini dilindungi password. Masukkan password PDF untuk melanjutkan analisis.
-                          </p>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {!isProcessing && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="text-xs text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white transition-colors cursor-pointer"
+                              >
+                                Change File
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleClearFile}
+                                className="text-xs text-rose-600 hover:text-rose-700 px-3 py-1.5 rounded-lg border border-rose-200 hover:bg-rose-50 transition-colors cursor-pointer"
+                              >
+                                Remove
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
 
-                      {/* Password Error Alert */}
-                      {(passwordError || processingStage === "WRONG_PASSWORD") && (
-                        <div
-                          role="alert"
-                          className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2"
-                        >
-                          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                          <span className="font-medium">
-                            {passwordError || "Password PDF salah atau dokumen tidak dapat dibuka."}
-                          </span>
+                      {/* PASSWORD-PROTECTED PDF STATE (Section 8) */}
+                      {(isPasswordProtected ||
+                        processingStage === "PASSWORD_REQUIRED" ||
+                        processingStage === "WRONG_PASSWORD") && (
+                        <div className="p-5 rounded-2xl border border-amber-300 bg-amber-50/90 space-y-4 shadow-xs animate-in fade-in duration-200">
+                          <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+                              <KeyRound className="w-5 h-5" />
+                            </div>
+                            <div className="space-y-1">
+                              <h4 className="text-sm font-bold text-amber-950">
+                                This PDF is password protected
+                              </h4>
+                              <p className="text-xs text-amber-900/90 leading-relaxed">
+                                Enter the PDF password to continue analysis.
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Password Error Alert */}
+                          {(passwordError || processingStage === "WRONG_PASSWORD") && (
+                            <div
+                              role="alert"
+                              className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2"
+                            >
+                              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                              <span className="font-medium leading-relaxed">
+                                {passwordError || "Password PDF salah atau dokumen tidak dapat dibuka."}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Password Form */}
+                          <form onSubmit={handleUnlockAndAnalyze} className="space-y-3">
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                              <div className="relative flex-1">
+                                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                                  <Lock className="w-4 h-4" />
+                                </div>
+                                <input
+                                  type={showPassword ? "text" : "password"}
+                                  autoComplete="off"
+                                  value={pdfPassword}
+                                  onChange={(e) => {
+                                    setPdfPassword(e.target.value);
+                                    setPasswordError(null);
+                                  }}
+                                  placeholder="Enter PDF password..."
+                                  disabled={isProcessing}
+                                  className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm bg-white border border-amber-300 focus:border-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-slate-900 font-mono text-slate-900 placeholder:text-slate-400"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowPassword(!showPassword)}
+                                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                                  tabIndex={-1}
+                                  aria-label={showPassword ? "Hide password" : "Show password"}
+                                >
+                                  {showPassword ? (
+                                    <EyeOff className="w-4 h-4" />
+                                  ) : (
+                                    <Eye className="w-4 h-4" />
+                                  )}
+                                </button>
+                              </div>
+                              <button
+                                type="submit"
+                                disabled={isProcessing || !pdfPassword}
+                                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white text-xs sm:text-sm font-semibold transition-colors shadow-xs cursor-pointer shrink-0"
+                              >
+                                {isProcessing && processingStage === "DECRYPTING" ? (
+                                  <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Decrypting...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Unlock className="w-4 h-4" />
+                                    Unlock &amp; Continue
+                                  </>
+                                )}
+                              </button>
+                            </div>
+
+                            <p className="text-[11px] text-amber-900/90 font-medium">
+                              Your password is used only to unlock this document and is never stored.
+                            </p>
+                          </form>
                         </div>
                       )}
 
-                      {/* Password Input & Unlock Form */}
-                      <form onSubmit={handleUnlockAndAnalyze} className="space-y-3">
-                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-                          <div className="relative flex-1">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
-                              <Lock className="w-4 h-4" />
+                      {/* Ready Action Callout */}
+                      {!isPasswordProtected &&
+                        processingStage !== "PASSWORD_REQUIRED" &&
+                        processingStage !== "WRONG_PASSWORD" && (
+                          <div className="pt-3 border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="text-xs text-slate-500">
+                              Selected features will be processed automatically in sequence.
                             </div>
-                            <input
-                              type={showPassword ? "text" : "password"}
-                              autoComplete="off"
-                              value={pdfPassword}
-                              onChange={(e) => {
-                                setPdfPassword(e.target.value);
-                                setPasswordError(null);
-                              }}
-                              placeholder="Masukkan password PDF dokumen..."
-                              disabled={isProcessing}
-                              className="w-full pl-9 pr-10 py-2 text-xs sm:text-sm bg-white border border-amber-300 focus:border-neutral-900 rounded-lg focus:outline-none focus:ring-1 focus:ring-neutral-900 font-mono text-neutral-900 placeholder:text-neutral-400"
-                            />
+
                             <button
                               type="button"
-                              onClick={() => setShowPassword(!showPassword)}
-                              className="absolute inset-y-0 right-0 pr-3 flex items-center text-neutral-400 hover:text-neutral-600 cursor-pointer"
-                              tabIndex={-1}
-                              aria-label={showPassword ? "Hide password" : "Show password"}
+                              onClick={handleStartExtraction}
+                              disabled={isProcessing}
+                              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white text-xs sm:text-sm font-semibold transition-colors shadow-xs cursor-pointer shrink-0"
                             >
-                              {showPassword ? (
-                                <EyeOff className="w-4 h-4" />
+                              {isProcessing ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                  Processing...
+                                </>
                               ) : (
-                                <Eye className="w-4 h-4" />
+                                <>
+                                  <span>Inspect &amp; Analyze Document</span>
+                                  <ArrowRight className="w-4 h-4" />
+                                </>
                               )}
                             </button>
                           </div>
-                          <button
-                            type="submit"
-                            disabled={isProcessing || !pdfPassword}
-                            className="inline-flex items-center justify-center gap-2 px-5 py-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 disabled:bg-neutral-400 text-white text-xs sm:text-sm font-semibold transition-colors shadow-xs cursor-pointer shrink-0"
-                          >
-                            {isProcessing && processingStage === "DECRYPTING" ? (
-                              <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                Decrypting...
-                              </>
-                            ) : (
-                              <>
-                                <Unlock className="w-4 h-4" />
-                                Unlock &amp; Analyze
-                              </>
-                            )}
-                          </button>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-[11px] text-amber-900/90 font-medium">
-                            💡 Tips mutasi bank (BNI, BCA, BRI, Mandiri): Password e-statement umumnya berupa tanggal lahir (format DDMMYYYY, misal: 25121990) atau nomor rekening.
-                          </p>
-                          <p className="text-[11px] text-amber-800/70">
-                            Password hanya digunakan sesaat di memori server dan tidak pernah disimpan di database atau disk.
-                          </p>
-                        </div>
-                      </form>
+                        )}
                     </div>
                   )}
 
-                  {!isPasswordProtected &&
-                    processingStage !== "PASSWORD_REQUIRED" &&
-                    processingStage !== "WRONG_PASSWORD" && (
-                      <div className="pt-3 border-t border-neutral-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="text-xs text-neutral-600 flex items-start gap-2">
-                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
-                          <p className="leading-relaxed">
-                            Ready for server-side metadata inspection and Indonesian bank detection.
-                          </p>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={handleStartExtraction}
-                          disabled={isProcessing}
-                          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 disabled:bg-neutral-400 text-white text-xs sm:text-sm font-semibold transition-colors shadow-xs cursor-pointer shrink-0"
-                        >
-                          {isProcessing ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              Processing...
-                            </>
-                          ) : (
-                            <>
-                              <Sparkles className="w-4 h-4 text-emerald-400" />
-                              Inspect &amp; Analyze Document
-                              <ArrowRight className="w-4 h-4" />
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    )}
+                  {/* REAL UPLOAD PROGRESS (Section 9) & PROCESSING TIMELINE (Section 10) */}
+                  {(uploadProgress.state === "UPLOADING" ||
+                    uploadProgress.state === "UPLOADED" ||
+                    uploadProgress.state === "PROCESSING" ||
+                    uploadProgress.state === "FAILED" ||
+                    uploadProgress.state === "CANCELLED") && (
+                    <div className="space-y-4 pt-2">
+                      <UploadProgressBar
+                        progress={uploadProgress}
+                        onCancel={handleCancelUpload}
+                        fileName={selectedRawFile?.name}
+                      />
+                      <ProcessingTimeline steps={timelineSteps} />
+                    </div>
+                  )}
                 </div>
-              )}
-
-              {/* Real-time Upload Progress & Processing Timeline (Part A, B, C, D, E, L) */}
-              {(uploadProgress.state === "UPLOADING" ||
-                uploadProgress.state === "UPLOADED" ||
-                uploadProgress.state === "PROCESSING" ||
-                uploadProgress.state === "FAILED" ||
-                uploadProgress.state === "CANCELLED") && (
-                <div className="mt-6 space-y-4">
-                  <UploadProgressBar
-                    progress={uploadProgress}
-                    onCancel={handleCancelUpload}
-                    fileName={selectedRawFile?.name}
-                  />
-                  <ProcessingTimeline steps={timelineSteps} />
-                </div>
-              )}
-            </div>
-          </section>
-        )}
-
-        {/* Recent Files Section */}
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold tracking-tight text-neutral-900 uppercase">
-              Recent Files
-            </h2>
-            <button
-              type="button"
-              onClick={fetchRecentFiles}
-              className="text-xs text-neutral-500 hover:text-neutral-800 transition-colors cursor-pointer"
-            >
-              Refresh ledger
-            </button>
+              </section>
+            )}
           </div>
-
-          <RecentFilesTable
-            documents={recentFiles}
-            loading={loadingRecent}
-            onSelectDocument={(doc) => {
-              if (doc.metadata) {
-                setActiveResult({
-                  document: doc,
-                  metadata: doc.metadata,
-                  isDuplicate: false,
-                });
-                // Fetch detection and transactions for selected document
-                triggerBankDetection(doc.id);
-                fetchExistingTransactions(doc.id);
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }
-            }}
-          />
-        </section>
-          </>
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-neutral-200 bg-white py-6 mt-auto">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-neutral-500">
+      {/* FOOTER */}
+      <footer className="border-t border-slate-200 bg-white py-6 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-neutral-800">Metadata Checker</span>
+            <span className="font-semibold text-slate-900">Metadata Checker</span>
             <span>—</span>
-            <span>PDF Metadata &amp; Bank Statement Analyzer</span>
+            <span>Financial Document Intelligence SaaS</span>
           </div>
-          <div className="flex items-center gap-4 text-[11px] text-neutral-400">
-            <span>Stage 3: Bank Detection Engine</span>
+          <div className="flex items-center gap-3 text-[11px] text-slate-400">
+            <span>20 MB Limit Verified</span>
+            <span>•</span>
+            <span>In-Memory PDF Decryption</span>
             <span>•</span>
             <span>Neon PostgreSQL Active</span>
-            <span>•</span>
-            <span>Rule-Based Detection</span>
           </div>
         </div>
       </footer>
@@ -1566,13 +1866,13 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
 
 function AppContent() {
   const { user, loading, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<"workspace" | "users">("workspace");
+  const [activeTab, setActiveTab] = useState<NavigationTab>("dashboard");
 
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-slate-800" />
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           <p className="text-xs font-medium text-slate-500 tracking-wide">
             Checking authenticated session...
           </p>
@@ -1602,4 +1902,3 @@ export default function App() {
     </AuthProvider>
   );
 }
-
