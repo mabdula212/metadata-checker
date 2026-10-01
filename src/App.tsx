@@ -44,7 +44,11 @@ import { ExcelExportCard } from "./components/ExcelExportCard";
 import { RecentFilesTable } from "./components/RecentFilesTable";
 import { AnalysisFeatureSelector } from "./components/AnalysisFeatureSelector";
 import { UploadProgressBar } from "./components/UploadProgressBar";
-import { ProcessingTimeline, type TimelineStep } from "./components/ProcessingTimeline";
+import {
+  ProcessingTimeline,
+  type TimelineStep,
+  type StepStatus,
+} from "./components/ProcessingTimeline";
 import type { TransactionExtractionResultUi } from "./types/transaction";
 import { AuthProvider, useAuth, type UserProfile } from "./context/AuthContext";
 import { LoginPage } from "./components/auth/LoginPage";
@@ -301,6 +305,10 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
     setErrorMessage(null);
     setActiveResult(null);
     setBankDetectionResult(null);
+    setTransactionExtractionResult(null);
+    setPdfPassword("");
+    setPasswordError(null);
+    setIsPasswordProtected(false);
 
     // 1. File Type Validation (PDF only)
     const isPdfMime = file.type === "application/pdf" || file.type === "";
@@ -744,7 +752,7 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
   const timelineSteps: TimelineStep[] = [
     {
       id: "upload",
-      label: "Upload PDF",
+      label: "File uploaded",
       status:
         uploadProgress.state === "COMPLETED" ||
         uploadProgress.state === "PROCESSING" ||
@@ -760,8 +768,31 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
       detail: selectedRawFile ? formatBytes(selectedRawFile.size) : undefined,
     },
     {
+      id: "validation_pdf",
+      label: "PDF validated",
+      status: selectedRawFile ? "COMPLETED" : "PENDING",
+      detail: selectedRawFile ? "%PDF- verified" : undefined,
+    },
+    ...(isPasswordProtected || processingStage === "DECRYPTING"
+      ? [
+          {
+            id: "decrypt",
+            label: "In-memory decryption",
+            status:
+              activeResult || processingStage === "COMPLETED" || processingStage === "INSPECTING"
+                ? ("COMPLETED" as StepStatus)
+                : processingStage === "DECRYPTING"
+                ? ("PROCESSING" as StepStatus)
+                : processingStage === "WRONG_PASSWORD"
+                ? ("FAILED" as StepStatus)
+                : ("PENDING" as StepStatus),
+            detail: "Zero persistent credentials",
+          },
+        ]
+      : []),
+    {
       id: "metadata",
-      label: "PDF Metadata",
+      label: "Extracting metadata",
       isSkipped: !selectedFeatures.includes("metadata"),
       status: !selectedFeatures.includes("metadata")
         ? "SKIPPED"
@@ -776,7 +807,7 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
     },
     {
       id: "bankDetection",
-      label: "Bank Detection",
+      label: "Detecting bank",
       isSkipped: !selectedFeatures.includes("bankDetection"),
       status: !selectedFeatures.includes("bankDetection")
         ? "SKIPPED"
@@ -791,7 +822,7 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
     },
     {
       id: "transactionExtraction",
-      label: "Transaction Extraction",
+      label: "Extracting transactions",
       isSkipped: !selectedFeatures.includes("transactionExtraction"),
       status: !selectedFeatures.includes("transactionExtraction")
         ? "SKIPPED"
@@ -808,7 +839,7 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
     },
     {
       id: "validation",
-      label: "Balance Validation",
+      label: "Validating balances",
       isSkipped: !selectedFeatures.includes("validation"),
       status: !selectedFeatures.includes("validation")
         ? "SKIPPED"
@@ -822,7 +853,7 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
     },
     {
       id: "excelExport",
-      label: "Excel Export",
+      label: "Preparing results",
       isSkipped: !selectedFeatures.includes("excelExport"),
       status: !selectedFeatures.includes("excelExport")
         ? "SKIPPED"
@@ -1404,6 +1435,111 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
               </p>
             </div>
 
+            {/* Workflow Step Tracker */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+              <div className="flex items-center justify-between gap-2 overflow-x-auto text-xs py-1">
+                {/* Step 1: Upload */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <span
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                      activeResult || isProcessing || selectedRawFile
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-blue-600 text-white"
+                    }`}
+                  >
+                    {activeResult || isProcessing || selectedRawFile ? "✓" : "1"}
+                  </span>
+                  <span
+                    className={`font-semibold ${
+                      !selectedRawFile && !isProcessing && !activeResult
+                        ? "text-slate-900 font-bold"
+                        : "text-slate-600"
+                    }`}
+                  >
+                    Upload PDF
+                  </span>
+                </div>
+
+                <div className="h-px w-6 sm:w-12 bg-slate-200 shrink-0" />
+
+                {/* Step 2: Choose Features */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <span
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                      activeResult || isProcessing
+                        ? "bg-emerald-100 text-emerald-800"
+                        : selectedRawFile
+                        ? "bg-blue-600 text-white"
+                        : "bg-slate-100 text-slate-400"
+                    }`}
+                  >
+                    {activeResult || isProcessing ? "✓" : "2"}
+                  </span>
+                  <span
+                    className={`font-semibold ${
+                      selectedRawFile && !isProcessing && !activeResult
+                        ? "text-slate-900 font-bold"
+                        : activeResult || isProcessing
+                        ? "text-slate-600"
+                        : "text-slate-400"
+                    }`}
+                  >
+                    Choose Analysis
+                  </span>
+                </div>
+
+                <div className="h-px w-6 sm:w-12 bg-slate-200 shrink-0" />
+
+                {/* Step 3: Processing */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <span
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                      activeResult
+                        ? "bg-emerald-100 text-emerald-800"
+                        : isProcessing
+                        ? "bg-blue-600 text-white animate-pulse"
+                        : "bg-slate-100 text-slate-400"
+                    }`}
+                  >
+                    {activeResult ? "✓" : "3"}
+                  </span>
+                  <span
+                    className={`font-semibold ${
+                      isProcessing
+                        ? "text-slate-900 font-bold"
+                        : activeResult
+                        ? "text-slate-600"
+                        : "text-slate-400"
+                    }`}
+                  >
+                    Processing
+                  </span>
+                </div>
+
+                <div className="h-px w-6 sm:w-12 bg-slate-200 shrink-0" />
+
+                {/* Step 4: Results */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <span
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                      activeResult
+                        ? "bg-blue-600 text-white"
+                        : "bg-slate-100 text-slate-400"
+                    }`}
+                  >
+                    4
+                  </span>
+                  <span
+                    className={`font-semibold ${
+                      activeResult ? "text-slate-900 font-bold" : "text-slate-400"
+                    }`}
+                  >
+                    Results &amp; Export
+                  </span>
+                </div>
+              </div>
+            </div>
+
             {/* RESULTS STATE (Section 11) */}
             {activeResult ? (
               <section className="space-y-6 animate-in fade-in duration-200">
@@ -1490,7 +1626,7 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
                 </div>
 
                 {/* Processing Timeline (Section 10) */}
-                <ProcessingTimeline steps={timelineSteps} />
+                <ProcessingTimeline steps={timelineSteps} hideSkipped={true} />
 
                 {/* Bank Detection Result Card (Section 13) */}
                 {(selectedFeatures.includes("bankDetection") || bankDetectionResult) && (
@@ -1535,52 +1671,78 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
                   />
                 )}
               </section>
-            ) : (
-              /* UPLOAD & CONFIGURATION WORKSPACE (Sections 5-10) */
-              <section className="space-y-6">
-                {/* FEATURE SELECTION (Section 7) */}
-                <AnalysisFeatureSelector
-                  selectedFeatures={selectedFeatures}
-                  onChange={setSelectedFeatures}
-                  disabled={isProcessing}
-                />
+            ) : isProcessing ? (
+              /* DEDICATED PROCESSING WORKSPACE (Sections 9 & 10) */
+              <section className="space-y-6 animate-in fade-in duration-200">
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-7 shadow-xs space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      </div>
+                      <div className="min-w-0">
+                        <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                          Analyzing Your Document
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          We're processing the analysis you selected.
+                        </p>
+                      </div>
+                    </div>
+
+                    {selectedRawFile && (
+                      <div className="text-xs text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 font-mono truncate max-w-xs">
+                        {selectedRawFile.name} ({formatBytes(selectedRawFile.size)})
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Real Upload Progress (Section 9) */}
+                  <UploadProgressBar
+                    progress={uploadProgress}
+                    onCancel={handleCancelUpload}
+                    fileName={selectedRawFile?.name}
+                  />
+
+                  {/* Processing Timeline (Section 10) */}
+                  <ProcessingTimeline steps={timelineSteps} hideSkipped={true} />
+                </div>
+              </section>
+            ) : !selectedRawFile ? (
+              /* UPLOAD DROPZONE WORKSPACE (Section 5) */
+              <section className="space-y-6 animate-in fade-in duration-200">
+                {/* Validation Error Alert */}
+                {errorMessage && (
+                  <div
+                    role="alert"
+                    className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 flex items-start gap-3 text-xs sm:text-sm animate-in fade-in duration-200"
+                  >
+                    <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                    <div className="space-y-0.5 flex-1">
+                      <div className="font-semibold text-rose-950">Validation Error</div>
+                      <div>{errorMessage}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setErrorMessage(null)}
+                      className="text-rose-500 hover:text-rose-700 p-0.5 cursor-pointer"
+                      aria-label="Dismiss error"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
 
                 <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
-                  {/* Validation Error Alert */}
-                  {errorMessage && (
-                    <div
-                      role="alert"
-                      className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 flex items-start gap-3 text-xs sm:text-sm animate-in fade-in duration-200"
-                    >
-                      <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-                      <div className="space-y-0.5 flex-1">
-                        <div className="font-semibold text-rose-950">Validation Error</div>
-                        <div>{errorMessage}</div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setErrorMessage(null)}
-                        className="text-rose-500 hover:text-rose-700 p-0.5 cursor-pointer"
-                        aria-label="Dismiss error"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
-
                   {/* Drag and Drop Zone (Section 5) */}
                   <div
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
-                    onClick={() => !isProcessing && fileInputRef.current?.click()}
+                    onClick={() => fileInputRef.current?.click()}
                     className={`relative border-2 border-dashed rounded-2xl p-8 sm:p-12 text-center transition-all duration-150 cursor-pointer ${
-                      isProcessing
-                        ? "border-slate-300 bg-slate-50 cursor-wait opacity-80"
-                        : isDragging
+                      isDragging
                         ? "border-blue-600 bg-blue-50/50 scale-[0.99]"
-                        : selectedRawFile
-                        ? "border-emerald-500 bg-emerald-50/20"
                         : "border-slate-300 hover:border-slate-400 bg-slate-50/50 hover:bg-slate-50"
                     }`}
                   >
@@ -1589,7 +1751,6 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
                       type="file"
                       accept="application/pdf,.pdf"
                       onChange={handleFileChange}
-                      disabled={isProcessing}
                       className="hidden"
                       id="pdf-file-upload-input"
                     />
@@ -1597,56 +1758,36 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
                     <div className="flex flex-col items-center justify-center space-y-4 max-w-md mx-auto">
                       <div
                         className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${
-                          isProcessing
-                            ? "bg-slate-900 text-white"
-                            : selectedRawFile
-                            ? "bg-emerald-100 text-emerald-700"
-                            : isDragging
+                          isDragging
                             ? "bg-blue-600 text-white"
                             : "bg-blue-50 text-blue-600 border border-blue-100"
                         }`}
                       >
-                        {isProcessing ? (
-                          <Loader2 className="w-7 h-7 animate-spin" />
-                        ) : selectedRawFile ? (
-                          <CheckCircle2 className="w-7 h-7" />
-                        ) : (
-                          <UploadCloud className="w-7 h-7" />
-                        )}
+                        <UploadCloud className="w-7 h-7" />
                       </div>
 
                       <div className="space-y-1.5">
                         <h3 className="text-base sm:text-lg font-semibold text-slate-900">
-                          {isProcessing
-                            ? STAGE_DETAILS[processingStage].label
-                            : selectedRawFile
-                            ? "PDF Document Ready"
-                            : isDragging
-                            ? "Drop your PDF file here"
-                            : "Drop your PDF here"}
+                          {isDragging ? "Drop your PDF file here" : "Drop your PDF here"}
                         </h3>
                         <p className="text-xs sm:text-sm text-slate-500">
-                          {isProcessing
-                            ? STAGE_DETAILS[processingStage].detail
-                            : "or choose a file from your device"}
+                          or choose a file from your device
                         </p>
                       </div>
 
-                      {!isProcessing && (
-                        <div className="pt-2">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              fileInputRef.current?.click();
-                            }}
-                            className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-slate-900 text-white text-xs sm:text-sm font-semibold hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
-                          >
-                            <UploadCloud className="w-4 h-4 mr-2" />
-                            {selectedRawFile ? "Change File" : "Choose PDF Document"}
-                          </button>
-                        </div>
-                      )}
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            fileInputRef.current?.click();
+                          }}
+                          className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-slate-900 text-white text-xs sm:text-sm font-semibold hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
+                        >
+                          <UploadCloud className="w-4 h-4 mr-2" />
+                          Choose PDF Document
+                        </button>
+                      </div>
 
                       <div className="pt-2 text-[11px] text-slate-400 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
                         <span>Maximum file size: 20 MB</span>
@@ -1657,186 +1798,200 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
                       </div>
                     </div>
                   </div>
+                </div>
+              </section>
+            ) : (
+              /* FILE SELECTED + FEATURE SELECTION + PASSWORD/ACTION WORKSPACE (Sections 6, 7, 8) */
+              <section className="space-y-6 animate-in fade-in duration-200">
+                {/* Validation Error Alert */}
+                {errorMessage && (
+                  <div
+                    role="alert"
+                    className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 flex items-start gap-3 text-xs sm:text-sm animate-in fade-in duration-200"
+                  >
+                    <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                    <div className="space-y-0.5 flex-1">
+                      <div className="font-semibold text-rose-950">Error</div>
+                      <div>{errorMessage}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setErrorMessage(null)}
+                      className="text-rose-500 hover:text-rose-700 p-0.5 cursor-pointer"
+                      aria-label="Dismiss error"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
 
-                  {/* FILE SELECTED PREVIEW CARD (Section 6) */}
-                  {selectedRawFile && (
-                    <div className="p-4 sm:p-5 rounded-2xl border border-slate-200 bg-slate-50/80 space-y-4">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-100">
-                            <FileText className="w-5 h-5" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs sm:text-sm font-bold text-slate-900 truncate" title={selectedRawFile.name}>
-                              {selectedRawFile.name}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              PDF Document · {formatBytes(selectedRawFile.size)} · Status: <span className="text-emerald-700 font-medium">Ready to analyze</span>
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          {!isProcessing && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => fileInputRef.current?.click()}
-                                className="text-xs text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white transition-colors cursor-pointer"
-                              >
-                                Change File
-                              </button>
-                              <button
-                                type="button"
-                                onClick={handleClearFile}
-                                className="text-xs text-rose-600 hover:text-rose-700 px-3 py-1.5 rounded-lg border border-rose-200 hover:bg-rose-50 transition-colors cursor-pointer"
-                              >
-                                Remove
-                              </button>
-                            </>
-                          )}
+                {/* 1. FILE SELECTED PREVIEW CARD (Section 6) */}
+                <div className="p-4 sm:p-5 rounded-2xl border border-slate-200 bg-white shadow-xs space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-100">
+                        <FileText className="w-6 h-6" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-900 truncate" title={selectedRawFile.name}>
+                          {selectedRawFile.name}
+                        </p>
+                        <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                          <span>PDF Document</span>
+                          <span>·</span>
+                          <span>{formatBytes(selectedRawFile.size)}</span>
+                          <span>·</span>
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                            Ready to analyze
+                          </span>
                         </div>
                       </div>
-
-                      {/* PASSWORD-PROTECTED PDF STATE (Section 8) */}
-                      {(isPasswordProtected ||
-                        processingStage === "PASSWORD_REQUIRED" ||
-                        processingStage === "WRONG_PASSWORD") && (
-                        <div className="p-5 rounded-2xl border border-amber-300 bg-amber-50/90 space-y-4 shadow-xs animate-in fade-in duration-200">
-                          <div className="flex items-start gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
-                              <KeyRound className="w-5 h-5" />
-                            </div>
-                            <div className="space-y-1">
-                              <h4 className="text-sm font-bold text-amber-950">
-                                This PDF is password protected
-                              </h4>
-                              <p className="text-xs text-amber-900/90 leading-relaxed">
-                                Enter the PDF password to continue analysis.
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Password Error Alert */}
-                          {(passwordError || processingStage === "WRONG_PASSWORD") && (
-                            <div
-                              role="alert"
-                              className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2"
-                            >
-                              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                              <span className="font-medium leading-relaxed">
-                                {passwordError || "Password PDF salah atau dokumen tidak dapat dibuka."}
-                              </span>
-                            </div>
-                          )}
-
-                          {/* Password Form */}
-                          <form onSubmit={handleUnlockAndAnalyze} className="space-y-3">
-                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-                              <div className="relative flex-1">
-                                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                                  <Lock className="w-4 h-4" />
-                                </div>
-                                <input
-                                  type={showPassword ? "text" : "password"}
-                                  autoComplete="off"
-                                  value={pdfPassword}
-                                  onChange={(e) => {
-                                    setPdfPassword(e.target.value);
-                                    setPasswordError(null);
-                                  }}
-                                  placeholder="Enter PDF password..."
-                                  disabled={isProcessing}
-                                  className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm bg-white border border-amber-300 focus:border-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-slate-900 font-mono text-slate-900 placeholder:text-slate-400"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => setShowPassword(!showPassword)}
-                                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
-                                  tabIndex={-1}
-                                  aria-label={showPassword ? "Hide password" : "Show password"}
-                                >
-                                  {showPassword ? (
-                                    <EyeOff className="w-4 h-4" />
-                                  ) : (
-                                    <Eye className="w-4 h-4" />
-                                  )}
-                                </button>
-                              </div>
-                              <button
-                                type="submit"
-                                disabled={isProcessing || !pdfPassword}
-                                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white text-xs sm:text-sm font-semibold transition-colors shadow-xs cursor-pointer shrink-0"
-                              >
-                                {isProcessing && processingStage === "DECRYPTING" ? (
-                                  <>
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    Decrypting...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Unlock className="w-4 h-4" />
-                                    Unlock &amp; Continue
-                                  </>
-                                )}
-                              </button>
-                            </div>
-
-                            <p className="text-[11px] text-amber-900/90 font-medium">
-                              Your password is used only to unlock this document and is never stored.
-                            </p>
-                          </form>
-                        </div>
-                      )}
-
-                      {/* Ready Action Callout */}
-                      {!isPasswordProtected &&
-                        processingStage !== "PASSWORD_REQUIRED" &&
-                        processingStage !== "WRONG_PASSWORD" && (
-                          <div className="pt-3 border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div className="text-xs text-slate-500">
-                              Selected features will be processed automatically in sequence.
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={handleStartExtraction}
-                              disabled={isProcessing}
-                              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white text-xs sm:text-sm font-semibold transition-colors shadow-xs cursor-pointer shrink-0"
-                            >
-                              {isProcessing ? (
-                                <>
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                  Processing...
-                                </>
-                              ) : (
-                                <>
-                                  <span>Inspect &amp; Analyze Document</span>
-                                  <ArrowRight className="w-4 h-4" />
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        )}
                     </div>
-                  )}
 
-                  {/* REAL UPLOAD PROGRESS (Section 9) & PROCESSING TIMELINE (Section 10) */}
-                  {(uploadProgress.state === "UPLOADING" ||
-                    uploadProgress.state === "UPLOADED" ||
-                    uploadProgress.state === "PROCESSING" ||
-                    uploadProgress.state === "FAILED" ||
-                    uploadProgress.state === "CANCELLED") && (
-                    <div className="space-y-4 pt-2">
-                      <UploadProgressBar
-                        progress={uploadProgress}
-                        onCancel={handleCancelUpload}
-                        fileName={selectedRawFile?.name}
-                      />
-                      <ProcessingTimeline steps={timelineSteps} />
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="text-xs font-semibold text-slate-700 hover:text-slate-900 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer"
+                      >
+                        Change File
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleClearFile}
+                        className="text-xs font-semibold text-rose-600 hover:text-rose-700 px-3 py-1.5 rounded-lg border border-rose-200 hover:bg-rose-50 transition-colors cursor-pointer"
+                      >
+                        Remove
+                      </button>
                     </div>
-                  )}
+                  </div>
                 </div>
+
+                {/* Hidden input for changing file */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={handleFileChange}
+                  className="hidden"
+                  id="pdf-file-upload-input-change"
+                />
+
+                {/* 2. FEATURE SELECTION (Section 7) */}
+                <AnalysisFeatureSelector
+                  selectedFeatures={selectedFeatures}
+                  onChange={setSelectedFeatures}
+                  disabled={isProcessing}
+                />
+
+                {/* 3. PASSWORD-PROTECTED PDF STATE (Section 8) vs NORMAL ACTION BAR */}
+                {isPasswordProtected ||
+                processingStage === "PASSWORD_REQUIRED" ||
+                processingStage === "WRONG_PASSWORD" ? (
+                  /* DEDICATED PASSWORD CARD (Section 8) */
+                  <div className="p-5 sm:p-6 rounded-2xl border border-amber-300 bg-amber-50/90 space-y-4 shadow-xs animate-in fade-in duration-200">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+                        <KeyRound className="w-5 h-5" />
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-bold text-amber-950">
+                          This PDF is password protected
+                        </h4>
+                        <p className="text-xs text-amber-900/90 leading-relaxed">
+                          Enter the PDF password to continue analysis.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Password Error Alert */}
+                    {(passwordError || processingStage === "WRONG_PASSWORD") && (
+                      <div
+                        role="alert"
+                        className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2"
+                      >
+                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span className="font-medium leading-relaxed">
+                          {passwordError || "Password PDF salah atau dokumen tidak dapat dibuka."}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Password Form */}
+                    <form onSubmit={handleUnlockAndAnalyze} className="space-y-3">
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                        <div className="relative flex-1">
+                          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                            <Lock className="w-4 h-4" />
+                          </div>
+                          <input
+                            type={showPassword ? "text" : "password"}
+                            autoComplete="off"
+                            value={pdfPassword}
+                            onChange={(e) => {
+                              setPdfPassword(e.target.value);
+                              setPasswordError(null);
+                            }}
+                            placeholder="Enter PDF password..."
+                            disabled={isProcessing}
+                            className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm bg-white border border-amber-300 focus:border-slate-900 rounded-xl focus:outline-none focus:ring-1 focus:ring-slate-900 font-mono text-slate-900 placeholder:text-slate-400"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                            tabIndex={-1}
+                            aria-label={showPassword ? "Hide password" : "Show password"}
+                          >
+                            {showPassword ? (
+                              <EyeOff className="w-4 h-4" />
+                            ) : (
+                              <Eye className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={isProcessing || !pdfPassword}
+                          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white text-xs sm:text-sm font-semibold transition-colors shadow-xs cursor-pointer shrink-0"
+                        >
+                          {isProcessing && processingStage === "DECRYPTING" ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Decrypting...
+                            </>
+                          ) : (
+                            <>
+                              <Unlock className="w-4 h-4" />
+                              Unlock &amp; Continue
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      <p className="text-[11px] text-amber-900/90 font-medium">
+                        Your password is used only to unlock this document and is never stored.
+                      </p>
+                    </form>
+                  </div>
+                ) : (
+                  /* NORMAL ACTION BAR (NO PASSWORD PROMPT!) */
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="text-xs text-slate-500">
+                      Selected features will be processed automatically in sequence.
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleStartExtraction}
+                      disabled={isProcessing}
+                      className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white text-xs sm:text-sm font-semibold transition-colors shadow-xs cursor-pointer shrink-0"
+                    >
+                      <span>Analyze PDF</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </section>
             )}
           </div>

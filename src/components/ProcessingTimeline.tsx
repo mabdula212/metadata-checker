@@ -28,13 +28,19 @@ interface ProcessingTimelineProps {
   steps: TimelineStep[];
   title?: string;
   subtitle?: string;
+  hideSkipped?: boolean;
 }
 
 export const ProcessingTimeline: React.FC<ProcessingTimelineProps> = ({
   steps,
   title = "Analyzing Your Document",
   subtitle = "We're processing the analysis you selected.",
+  hideSkipped = true,
 }) => {
+  const visibleSteps = hideSkipped
+    ? steps.filter((s) => !s.isSkipped && s.status !== "SKIPPED")
+    : steps;
+
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-xs">
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
@@ -47,7 +53,7 @@ export const ProcessingTimeline: React.FC<ProcessingTimelineProps> = ({
       </div>
 
       <div className="space-y-3">
-        {steps.map((step) => {
+        {visibleSteps.map((step) => {
           const { status, label, detail, isSkipped } = step;
 
           return (
