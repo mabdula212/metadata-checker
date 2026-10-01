@@ -237,7 +237,6 @@ describe("Password-Protected PDF Support & Decryption Security Tests", () => {
     const originalLog = console.log;
     console.log = (...args: unknown[]) => {
       loggedMessages.push(args.map(String).join(" "));
-      originalLog(...args);
     };
 
     try {

@@ -539,6 +539,23 @@ export async function decryptPdf(
     candidates.push(cleanPwd);
   }
 
+  // Indonesian bank statement date formats (e.g. DD-MM-YYYY vs DDMMYYYY)
+  if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(trimmedPwd)) {
+    const digitsOnly = trimmedPwd.replace(/[-/]/g, "");
+    if (!candidates.includes(digitsOnly)) candidates.push(digitsOnly);
+  } else if (/^\d{8}$/.test(trimmedPwd)) {
+    const dashed = `${trimmedPwd.slice(0, 2)}-${trimmedPwd.slice(2, 4)}-${trimmedPwd.slice(4)}`;
+    const slashed = `${trimmedPwd.slice(0, 2)}/${trimmedPwd.slice(2, 4)}/${trimmedPwd.slice(4)}`;
+    if (!candidates.includes(dashed)) candidates.push(dashed);
+    if (!candidates.includes(slashed)) candidates.push(slashed);
+  }
+
+  // Case variations for letters
+  const upper = trimmedPwd.toUpperCase();
+  const lower = trimmedPwd.toLowerCase();
+  if (upper !== trimmedPwd && !candidates.includes(upper)) candidates.push(upper);
+  if (lower !== trimmedPwd && !candidates.includes(lower)) candidates.push(lower);
+
   let verifiedPassword: string | null = null;
   let unpdfDoc: Awaited<ReturnType<typeof getDocumentProxy>> | null = null;
 
@@ -551,15 +568,9 @@ export async function decryptPdf(
       verifiedPassword = candidate;
       unpdfDoc = doc;
       break;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "";
-      // If error is code 2 / Incorrect Password, continue testing other candidates
-      if (
-        msg.toLowerCase().includes("incorrect password") ||
-        msg.toLowerCase().includes("password")
-      ) {
-        continue;
-      }
+    } catch {
+      // Continue testing remaining candidates
+      continue;
     }
   }
 

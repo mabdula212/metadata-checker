@@ -77,10 +77,16 @@ describe("BNI Decrypted PDF Pipeline Integration Tests", () => {
 
   // 2. Wrong Password Handling
   it("2. fails decryption on wrong password with generic error message", async () => {
-    const decResult = await decryptPdf(encryptedBniPdfBytes, WRONG_PASSWORD);
-    assert.equal(decResult.success, false);
-    assert.equal(decResult.securityState, "PASSWORD_PROTECTED");
-    assert.equal(decResult.error, "Password PDF salah atau dokumen tidak dapat dibuka.");
+    const origLog = console.log;
+    console.log = () => {};
+    try {
+      const decResult = await decryptPdf(encryptedBniPdfBytes, WRONG_PASSWORD);
+      assert.equal(decResult.success, false);
+      assert.equal(decResult.securityState, "PASSWORD_PROTECTED");
+      assert.equal(decResult.error, "Password PDF salah atau dokumen tidak dapat dibuka.");
+    } finally {
+      console.log = origLog;
+    }
   });
 
   // 3. Correct Password Decryption

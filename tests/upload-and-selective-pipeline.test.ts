@@ -372,10 +372,16 @@ describe("Upload Progress, Speed, ETA & Selective Pipeline Suite", () => {
   });
 
   it("21. wrong password fails gracefully without server crash", async () => {
-    const decResult = await decryptPdf(encryptedBankStatementBytes, WRONG_PASSWORD);
-    assert.strictEqual(decResult.success, false);
-    assert.strictEqual(decResult.securityState, "PASSWORD_PROTECTED");
-    assert.ok(decResult.error?.includes("Password PDF salah"));
+    const origLog = console.log;
+    console.log = () => {};
+    try {
+      const decResult = await decryptPdf(encryptedBankStatementBytes, WRONG_PASSWORD);
+      assert.strictEqual(decResult.success, false);
+      assert.strictEqual(decResult.securityState, "PASSWORD_PROTECTED");
+      assert.ok(decResult.error?.includes("Password PDF salah"));
+    } finally {
+      console.log = origLog;
+    }
   });
 
   it("22. password is not persisted in memory cache, storage, or DB fields", async () => {
