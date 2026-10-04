@@ -27,7 +27,7 @@ export default async function adminUsersHandler(
   if (!adminUser) return;
 
   // -------------------------------------------------------------
-  // GET: List all users
+  // GET: List all users (including passwordPlain for Admin)
   // -------------------------------------------------------------
   if (req.method === "GET") {
     try {
@@ -39,6 +39,7 @@ export default async function adminUsersHandler(
           name: true,
           role: true,
           status: true,
+          passwordPlain: true,
           createdAt: true,
           updatedAt: true,
           _count: {
@@ -60,7 +61,9 @@ export default async function adminUsersHandler(
             name: u.name,
             role: u.role,
             status: u.status,
+            passwordPlain: u.passwordPlain || null,
             createdAt: u.createdAt.toISOString(),
+            updatedAt: u.updatedAt.toISOString(),
             documentCount: u._count.documents,
             exportCount: u._count.exports,
           })),
@@ -157,6 +160,7 @@ export default async function adminUsersHandler(
           role: requestedRole,
           status: requestedStatus,
           passwordHash,
+          passwordPlain: password,
         },
       });
 
@@ -178,6 +182,7 @@ export default async function adminUsersHandler(
             name: newUser.name,
             role: newUser.role,
             status: newUser.status,
+            passwordPlain: newUser.passwordPlain,
             createdAt: newUser.createdAt.toISOString(),
           },
         })
@@ -192,7 +197,7 @@ export default async function adminUsersHandler(
   }
 
   // -------------------------------------------------------------
-  // PATCH: Update user status (Approve/Restrict), role, or profile
+  // PATCH: Update user status (Approve/Restrict), role, profile, or password
   // -------------------------------------------------------------
   if (req.method === "PATCH") {
     const targetUserId = typeof body.userId === "string" ? body.userId.trim() : "";
@@ -207,6 +212,7 @@ export default async function adminUsersHandler(
         : undefined;
     const nextName = typeof body.name === "string" ? body.name.trim() : undefined;
     const nextEmail = typeof body.email === "string" ? body.email.trim().toLowerCase() : undefined;
+    const nextPassword = typeof body.password === "string" && body.password.trim() ? body.password : undefined;
 
     if (!targetUserId) {
       res.statusCode = 400;
@@ -239,7 +245,14 @@ export default async function adminUsersHandler(
         }
       }
 
-      const updateData: { role?: Role; status?: UserStatus; name?: string | null; email?: string } = {};
+      const updateData: {
+        role?: Role;
+        status?: UserStatus;
+        name?: string | null;
+        email?: string;
+        passwordHash?: string;
+        passwordPlain?: string;
+      } = {};
       if (nextRole && nextRole !== targetUser.role) {
         updateData.role = nextRole;
       }
@@ -258,6 +271,16 @@ export default async function adminUsersHandler(
         }
         updateData.email = nextEmail;
       }
+      if (nextPassword) {
+        const pwdCheck = validatePasswordStrength(nextPassword);
+        if (!pwdCheck.valid) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ success: false, error: pwdCheck.reason }));
+          return;
+        }
+        updateData.passwordHash = await hashPassword(nextPassword);
+        updateData.passwordPlain = nextPassword;
+      }
 
       if (Object.keys(updateData).length === 0) {
         res.statusCode = 200;
@@ -269,6 +292,10 @@ export default async function adminUsersHandler(
         where: { id: targetUserId },
         data: updateData,
       });
+
+      if (updateData.passwordHash && targetUserId !== adminUser.id) {
+        await destroyAllUserSessions(targetUserId);
+      }
 
       // If deactivated or suspended to pending, revoke all active sessions immediately
       if (updateData.status === UserStatus.DEACTIVATED || updateData.status === UserStatus.PENDING) {

@@ -21,9 +21,12 @@ export async function ensureDefaultAdminExists(): Promise<void> {
   if (adminBootstrapped) return;
 
   try {
-    // 1. Ensure PENDING exists in PostgreSQL UserStatus enum
+    // 1. Ensure PENDING exists in PostgreSQL UserStatus enum and passwordPlain column exists
     await prisma.$executeRawUnsafe(
       `ALTER TYPE "UserStatus" ADD VALUE IF NOT EXISTS 'PENDING'`
+    ).catch(() => {});
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "passwordPlain" TEXT`
     ).catch(() => {});
 
     const configuredAdminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
@@ -38,6 +41,7 @@ export async function ensureDefaultAdminExists(): Promise<void> {
         update: {
           role: Role.ADMIN,
           status: UserStatus.ACTIVE,
+          passwordPlain: PRIMARY_ADMIN_PASSWORD,
         },
         create: {
           email,
@@ -45,6 +49,7 @@ export async function ensureDefaultAdminExists(): Promise<void> {
           role: Role.ADMIN,
           status: UserStatus.ACTIVE,
           passwordHash: primaryAdminHash,
+          passwordPlain: PRIMARY_ADMIN_PASSWORD,
         },
       });
     }
@@ -56,6 +61,7 @@ export async function ensureDefaultAdminExists(): Promise<void> {
         update: {
           role: Role.ADMIN,
           status: UserStatus.ACTIVE,
+          passwordPlain: configuredAdminPassword,
         },
         create: {
           email: configuredAdminEmail,
@@ -63,6 +69,7 @@ export async function ensureDefaultAdminExists(): Promise<void> {
           role: Role.ADMIN,
           status: UserStatus.ACTIVE,
           passwordHash: customHash,
+          passwordPlain: configuredAdminPassword,
         },
       });
     }

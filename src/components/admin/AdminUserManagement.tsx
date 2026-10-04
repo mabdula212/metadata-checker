@@ -20,6 +20,9 @@ import {
   Trash2,
   Edit3,
   Check,
+  Eye,
+  EyeOff,
+  Copy,
 } from "lucide-react";
 
 interface ManagedUser {
@@ -28,7 +31,9 @@ interface ManagedUser {
   name: string | null;
   role: "USER" | "ADMIN";
   status: "PENDING" | "ACTIVE" | "DEACTIVATED";
+  passwordPlain?: string | null;
   createdAt: string;
+  updatedAt?: string;
   documentCount: number;
   exportCount: number;
 }
@@ -47,6 +52,11 @@ export const AdminUserManagement: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Password visibility in table
+  const [showAllPasswords, setShowAllPasswords] = useState(false);
+  const [visiblePasswordMap, setVisiblePasswordMap] = useState<Record<string, boolean>>({});
+  const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
+
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
@@ -60,17 +70,21 @@ export const AdminUserManagement: React.FC = () => {
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [newRole, setNewRole] = useState<"USER" | "ADMIN">("USER");
   const [newStatus, setNewStatus] = useState<"ACTIVE" | "PENDING" | "DEACTIVATED">("ACTIVE");
 
   // Edit user form state
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
+  const [editPassword, setEditPassword] = useState("");
+  const [showEditPassword, setShowEditPassword] = useState(false);
   const [editRole, setEditRole] = useState<"USER" | "ADMIN">("USER");
   const [editStatus, setEditStatus] = useState<"PENDING" | "ACTIVE" | "DEACTIVATED">("ACTIVE");
 
   // Reset password form state
   const [resetNewPassword, setResetNewPassword] = useState("");
+  const [showResetPasswordInput, setShowResetPasswordInput] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -91,6 +105,23 @@ export const AdminUserManagement: React.FC = () => {
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  const toggleRowPasswordVisibility = (userId: string) => {
+    setVisiblePasswordMap((prev) => ({
+      ...prev,
+      [userId]: !prev[userId],
+    }));
+  };
+
+  const handleCopyPassword = async (userId: string, pwd: string) => {
+    try {
+      await navigator.clipboard.writeText(pwd);
+      setCopiedUserId(userId);
+      setTimeout(() => setCopiedUserId(null), 1800);
+    } catch {
+      // ignore clipboard errors
+    }
+  };
 
   const stats = useMemo(() => {
     const total = users.length;
@@ -223,6 +254,7 @@ export const AdminUserManagement: React.FC = () => {
         setNewEmail("");
         setNewName("");
         setNewPassword("");
+        setShowNewPassword(false);
         setNewRole("USER");
         setNewStatus("ACTIVE");
         await fetchUsers();
@@ -240,6 +272,8 @@ export const AdminUserManagement: React.FC = () => {
     setSelectedUserForEdit(u);
     setEditName(u.name || "");
     setEditEmail(u.email);
+    setEditPassword(u.passwordPlain || "");
+    setShowEditPassword(false);
     setEditRole(u.role);
     setEditStatus(u.status);
     setShowEditModal(true);
@@ -254,19 +288,24 @@ export const AdminUserManagement: React.FC = () => {
     setSuccessMessage(null);
 
     try {
+      const payload: Record<string, unknown> = {
+        userId: selectedUserForEdit.id,
+        name: editName,
+        email: editEmail,
+        role: editRole,
+        status: editStatus,
+      };
+      if (editPassword.trim() && editPassword !== (selectedUserForEdit.passwordPlain || "")) {
+        payload.password = editPassword;
+      }
+
       const res = await safeApiFetch<any>("/api/admin/users", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: selectedUserForEdit.id,
-          name: editName,
-          email: editEmail,
-          role: editRole,
-          status: editStatus,
-        }),
+        body: JSON.stringify(payload),
       });
       if (res.ok && res.data?.success) {
-        setSuccessMessage(`Data akun ${editEmail} berhasil diperbarui.`);
+        setSuccessMessage(`Data & kredensial akun ${editEmail} berhasil diperbarui.`);
         setShowEditModal(false);
         setSelectedUserForEdit(null);
         await fetchUsers();
@@ -331,10 +370,12 @@ export const AdminUserManagement: React.FC = () => {
         }),
       });
       if (res.ok && res.data?.success) {
-        setSuccessMessage(`Password untuk ${selectedUserForReset.email} berhasil direset.`);
+        setSuccessMessage(`Password untuk ${selectedUserForReset.email} berhasil diperbarui.`);
         setShowResetModal(false);
         setSelectedUserForReset(null);
         setResetNewPassword("");
+        setShowResetPasswordInput(false);
+        await fetchUsers();
       } else {
         setErrorMessage(res.error || res.data?.error || "Gagal mereset password.");
       }
@@ -355,15 +396,24 @@ export const AdminUserManagement: React.FC = () => {
               <Shield className="w-4 h-4" />
             </div>
             <h2 className="text-lg font-bold text-slate-900 tracking-tight">
-              Admin Console — Otorisasi &amp; Manajemen Akun Pengguna
+              Admin Console — Otorisasi, Kredensial &amp; Manajemen Akun Pengguna
             </h2>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Otorisasi pendaftaran akun baru, batasi akses pengguna (Freeze / Deactivate), kelola hak akses (Role RBAC), dan reset kredensial.
+            Otorisasi pendaftaran akun baru, lihat &amp; edit seluruh data maupun password pengguna, serta kelola hak akses (RBAC).
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowAllPasswords((prev) => !prev)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+          >
+            {showAllPasswords ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            <span>{showAllPasswords ? "Sembunyikan Semua Password" : "Tampilkan Semua Password"}</span>
+          </button>
+
           <button
             type="button"
             onClick={fetchUsers}
@@ -453,6 +503,11 @@ export const AdminUserManagement: React.FC = () => {
                 <div>
                   <div className="text-xs font-bold text-slate-900">{pu.name || "Tanpa Nama"}</div>
                   <div className="text-[11px] font-mono text-slate-600">{pu.email}</div>
+                  {pu.passwordPlain && (
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      Password: <span className="font-mono font-semibold text-slate-800">{pu.passwordPlain}</span>
+                    </div>
+                  )}
                   <div className="text-[10px] text-slate-400 mt-0.5">
                     Terdaftar: {new Date(pu.createdAt).toLocaleString()}
                   </div>
@@ -562,10 +617,10 @@ export const AdminUserManagement: React.FC = () => {
             <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
               <tr>
                 <th className="py-3 px-4">Pengguna</th>
+                <th className="py-3 px-4">Password</th>
                 <th className="py-3 px-4">Role Akses</th>
                 <th className="py-3 px-4">Status Otorisasi</th>
-                <th className="py-3 px-4">Dokumen</th>
-                <th className="py-3 px-4">Ekspor</th>
+                <th className="py-3 px-4">Dokumen / Ekspor</th>
                 <th className="py-3 px-4 text-right">Kontrol Akses &amp; Aksi</th>
               </tr>
             </thead>
@@ -589,6 +644,7 @@ export const AdminUserManagement: React.FC = () => {
                   const isActive = u.status === "ACTIVE";
                   const isPending = u.status === "PENDING";
                   const isAdmin = u.role === "ADMIN";
+                  const isPwdVisible = showAllPasswords || Boolean(visiblePasswordMap[u.id]);
 
                   return (
                     <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
@@ -603,6 +659,52 @@ export const AdminUserManagement: React.FC = () => {
                         </div>
                         <div className="text-slate-500 font-mono text-[11px]">{u.email}</div>
                       </td>
+
+                      {/* Password Column */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        {u.passwordPlain ? (
+                          <div className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+                            <span className="font-mono text-[11px] text-slate-800 select-all">
+                              {isPwdVisible ? u.passwordPlain : "••••••••••"}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => toggleRowPasswordVisibility(u.id)}
+                              className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                              title={isPwdVisible ? "Sembunyikan password" : "Lihat password"}
+                            >
+                              {isPwdVisible ? (
+                                <EyeOff className="w-3.5 h-3.5" />
+                              ) : (
+                                <Eye className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyPassword(u.id, u.passwordPlain!)}
+                              className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                              title="Salin password"
+                            >
+                              {copiedUserId === u.id ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(u)}
+                            className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
+                            title="Klik untuk mengatur password baru agar dapat dilihat"
+                          >
+                            <Key className="w-3 h-3" />
+                            <span>Atur / Edit Password</span>
+                          </button>
+                        )}
+                      </td>
+
                       <td className="py-3 px-4 whitespace-nowrap">
                         <button
                           type="button"
@@ -645,11 +747,8 @@ export const AdminUserManagement: React.FC = () => {
                             : "DEACTIVATED (Akses Dibatasi)"}
                         </span>
                       </td>
-                      <td className="py-3 px-4 font-mono font-medium text-slate-700">
-                        {u.documentCount}
-                      </td>
-                      <td className="py-3 px-4 font-mono font-medium text-slate-700">
-                        {u.exportCount}
+                      <td className="py-3 px-4 font-mono font-medium text-slate-700 whitespace-nowrap">
+                        {u.documentCount} dok · {u.exportCount} xlsx
                       </td>
                       <td className="py-3 px-4 text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-1.5">
@@ -685,20 +784,23 @@ export const AdminUserManagement: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => openEditModal(u)}
-                            className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors cursor-pointer"
-                            title="Edit Profil & Hak Akses"
+                            className="inline-flex items-center gap-1 px-2 py-1 text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded text-xs font-medium transition-colors cursor-pointer"
+                            title="Edit Data, Password & Hak Akses Pengguna"
                           >
                             <Edit3 className="w-3.5 h-3.5" />
+                            <span>Edit</span>
                           </button>
 
                           <button
                             type="button"
                             onClick={() => {
                               setSelectedUserForReset(u);
+                              setResetNewPassword(u.passwordPlain || "");
+                              setShowResetPasswordInput(false);
                               setShowResetModal(true);
                             }}
                             className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors cursor-pointer"
-                            title="Reset Password"
+                            title="Ganti / Reset Password"
                           >
                             <Key className="w-3.5 h-3.5" />
                           </button>
@@ -767,14 +869,24 @@ export const AdminUserManagement: React.FC = () => {
 
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Password *</label>
-                <input
-                  type="password"
-                  required
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Minimal 8 karakter (huruf + angka/simbol)"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
-                />
+                <div className="relative">
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Minimal 8 karakter (huruf + angka/simbol)"
+                    className="w-full pl-3 pr-10 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    title={showNewPassword ? "Sembunyikan password" : "Tampilkan password"}
+                  >
+                    {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -827,13 +939,13 @@ export const AdminUserManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Edit User Modal */}
+      {/* Edit User Data & Password Modal */}
       {showEditModal && selectedUserForEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
           <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-7 max-w-md w-full shadow-lg space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="text-base font-bold text-slate-900">
-                Kelola Akun &amp; Hak Akses Pengguna
+                Edit Data, Password &amp; Hak Akses Pengguna
               </h3>
               <button
                 type="button"
@@ -854,6 +966,7 @@ export const AdminUserManagement: React.FC = () => {
                   type="text"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Nama pengguna"
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
                 />
               </div>
@@ -867,6 +980,32 @@ export const AdminUserManagement: React.FC = () => {
                   onChange={(e) => setEditEmail(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
                 />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Password Pengguna{" "}
+                  <span className="font-normal text-slate-400">
+                    (Ubah untuk mengganti password)
+                  </span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showEditPassword ? "text" : "password"}
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    placeholder="Masukkan password baru (min. 8 karakter + angka/simbol)"
+                    className="w-full pl-3 pr-10 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    title={showEditPassword ? "Sembunyikan password" : "Tampilkan password"}
+                  >
+                    {showEditPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -930,7 +1069,7 @@ export const AdminUserManagement: React.FC = () => {
           <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-7 max-w-md w-full shadow-lg space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="text-base font-bold text-slate-900">
-                Reset Password: {selectedUserForReset.email}
+                Ubah / Reset Password: {selectedUserForReset.email}
               </h3>
               <button
                 type="button"
@@ -947,14 +1086,28 @@ export const AdminUserManagement: React.FC = () => {
             <form onSubmit={handleResetPassword} className="space-y-3.5 text-xs">
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Password Baru *</label>
-                <input
-                  type="password"
-                  required
-                  value={resetNewPassword}
-                  onChange={(e) => setResetNewPassword(e.target.value)}
-                  placeholder="Minimal 8 karakter (huruf + angka/simbol)"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
-                />
+                <div className="relative">
+                  <input
+                    type={showResetPasswordInput ? "text" : "password"}
+                    required
+                    value={resetNewPassword}
+                    onChange={(e) => setResetNewPassword(e.target.value)}
+                    placeholder="Minimal 8 karakter (huruf + angka/simbol)"
+                    className="w-full pl-3 pr-10 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetPasswordInput((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    title={showResetPasswordInput ? "Sembunyikan password" : "Tampilkan password"}
+                  >
+                    {showResetPasswordInput ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
@@ -973,7 +1126,7 @@ export const AdminUserManagement: React.FC = () => {
                   disabled={actionLoading}
                   className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-semibold shadow-xs transition-colors cursor-pointer"
                 >
-                  {actionLoading ? "Mereset..." : "Reset Password"}
+                  {actionLoading ? "Menyimpan..." : "Simpan Password"}
                 </button>
               </div>
             </form>
