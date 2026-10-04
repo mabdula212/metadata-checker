@@ -10,12 +10,13 @@ import {
   Layers,
 } from "lucide-react";
 
-export type FooterNavigationTab = "dashboard" | "analyze" | "recent" | "exports" | "admin";
+export type FooterNavigationTab = "dashboard" | "analyze" | "recent" | "exports" | "about" | "admin";
 
 export interface FooterProps {
   variant?: "marketing" | "app";
   isAuthenticated?: boolean;
   onNavigateTab?: (tab: FooterNavigationTab, sectionId?: string) => void;
+  onNavigateAbout?: () => void;
 }
 
 type InfoModalTopic = "about" | "documentation" | "status" | "contact" | "privacy" | "security" | "data-protection" | null;
@@ -119,8 +120,21 @@ export const Footer: React.FC<FooterProps> = ({
   variant = "marketing",
   isAuthenticated = false,
   onNavigateTab,
+  onNavigateAbout,
 }) => {
   const [activeInfoTopic, setActiveInfoTopic] = useState<InfoModalTopic>(null);
+
+  const handleAboutClick = () => {
+    if (onNavigateAbout) {
+      onNavigateAbout();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } else if (onNavigateTab) {
+      onNavigateTab("about");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      setActiveInfoTopic("about");
+    }
+  };
 
   const handleProductNav = (tab: FooterNavigationTab, sectionId?: string) => {
     if (isAuthenticated && onNavigateTab) {
@@ -194,7 +208,7 @@ export const Footer: React.FC<FooterProps> = ({
               </button>
             ) : (
               <span className="text-[11px] text-slate-400">
-                Metadata Checker · Financial Document Analysis
+                Metadata Checker · Designed &amp; Developed by Aziz
               </span>
             )}
 
@@ -225,7 +239,7 @@ export const Footer: React.FC<FooterProps> = ({
         >
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-              {/* Left: Copyright & Tagline */}
+              {/* Left: Copyright & Creator */}
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-2.5 gap-y-1">
                 <span className="font-semibold text-slate-900">
                   © 2026 Metadata Checker
@@ -234,7 +248,8 @@ export const Footer: React.FC<FooterProps> = ({
                   ·
                 </span>
                 <span className="text-slate-500">
-                  Secure Financial Document Analysis
+                  Designed &amp; Developed by{" "}
+                  <span className="font-semibold text-slate-700">Aziz</span>
                 </span>
               </div>
 
@@ -244,6 +259,16 @@ export const Footer: React.FC<FooterProps> = ({
                   aria-label="Workspace footer links"
                   className="flex items-center gap-2.5 text-xs text-slate-500"
                 >
+                  <button
+                    type="button"
+                    onClick={handleAboutClick}
+                    className="hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 rounded transition-colors cursor-pointer"
+                  >
+                    About
+                  </button>
+                  <span className="text-slate-300" aria-hidden="true">
+                    ·
+                  </span>
                   <button
                     type="button"
                     onClick={() => setActiveInfoTopic("privacy")}
@@ -292,7 +317,7 @@ export const Footer: React.FC<FooterProps> = ({
 
   // ============================================================================
   // FULL ENTERPRISE SAAS FOOTER (variant === "marketing")
-  // Used on Home / Landing Overview page and Authentication page
+  // Used on Home / Landing Overview page, About page, and Authentication page
   // ============================================================================
   return (
     <>
@@ -324,7 +349,7 @@ export const Footer: React.FC<FooterProps> = ({
               </p>
             </div>
 
-            {/* Column 2: PRODUCT (2 cols on lg) */}
+            {/* Column 2: PRODUCT (3 cols on lg) */}
             <nav aria-label="Product navigation" className="lg:col-span-3 space-y-3">
               <h3 className="text-xs font-semibold text-slate-900 tracking-tight">
                 Product
@@ -387,7 +412,7 @@ export const Footer: React.FC<FooterProps> = ({
                 <li>
                   <button
                     type="button"
-                    onClick={() => setActiveInfoTopic("about")}
+                    onClick={handleAboutClick}
                     className="hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 rounded transition-colors cursor-pointer text-left"
                   >
                     About
@@ -502,11 +527,26 @@ export const Footer: React.FC<FooterProps> = ({
             </div>
           </div>
 
-          {/* Subtle Horizontal Divider & Bottom Bar */}
-          <div className="pt-6 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-            <p className="text-center sm:text-left">
-              © 2026 Metadata Checker. All rights reserved.
-            </p>
+          {/* Subtle Horizontal Divider & Bottom Bar with Author Branding */}
+          <div className="pt-6 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+            <div className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-3 text-center sm:text-left">
+              <span className="text-slate-500">
+                Designed &amp; Developed by{" "}
+                <button
+                  type="button"
+                  onClick={handleAboutClick}
+                  className="font-semibold text-slate-800 hover:text-blue-600 transition-colors cursor-pointer"
+                >
+                  Aziz
+                </button>
+              </span>
+              <span className="hidden sm:inline text-slate-300" aria-hidden="true">
+                ·
+              </span>
+              <p className="text-slate-500">
+                © 2026 Metadata Checker. All rights reserved.
+              </p>
+            </div>
 
             <div className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2.5 text-[11px] text-slate-500">
               <span>Secure Processing</span>

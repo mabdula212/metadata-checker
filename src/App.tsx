@@ -65,6 +65,7 @@ import {
 import { AdminUserManagement } from "./components/admin/AdminUserManagement";
 import { CookieConsentBanner } from "./components/CookieConsentBanner";
 import { Footer } from "./components/layout/Footer";
+import { AboutPage } from "./components/AboutPage";
 
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
 
@@ -206,7 +207,7 @@ const STAGE_DETAILS: Record<ProcessingStage, ProcessingStateInfo> = {
   },
 };
 
-type NavigationTab = "dashboard" | "analyze" | "recent" | "exports" | "admin";
+type NavigationTab = "dashboard" | "analyze" | "recent" | "exports" | "about" | "admin";
 
 interface MainWorkspaceProps {
   user: UserProfile;
@@ -957,6 +958,17 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
               >
                 Exports
               </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("about")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                  activeTab === "about"
+                    ? "bg-slate-100 text-slate-900"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                }`}
+              >
+                About
+              </button>
               {user.role === "ADMIN" && (
                 <button
                   id="admin-nav-users-tab"
@@ -1052,6 +1064,16 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
             >
               Exports
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("about");
+                setMobileMenuOpen(false);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100"
+            >
+              About
+            </button>
             {user.role === "ADMIN" && (
               <button
                 type="button"
@@ -1077,6 +1099,17 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
           <div className="space-y-6">
             <AdminUserManagement />
           </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* VIEW 1B: ABOUT PAGE (/about) */}
+        {/* ============================================================== */}
+        {activeTab === "about" && (
+          <AboutPage
+            isAuthenticated={true}
+            onNavigateHome={() => setActiveTab("dashboard")}
+            onNavigateAnalyze={() => setActiveTab("analyze")}
+          />
         )}
 
         {/* ============================================================== */}
@@ -2003,11 +2036,12 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
         )}
       </main>
 
-      {/* FOOTER: Full marketing footer on Home/Dashboard, compact app footer on workspace tabs */}
+      {/* FOOTER: Full marketing footer on Home/Dashboard and About page, compact app footer on workspace tabs */}
       <Footer
-        variant={activeTab === "dashboard" ? "marketing" : "app"}
+        variant={activeTab === "dashboard" || activeTab === "about" ? "marketing" : "app"}
         isAuthenticated={true}
         onNavigateTab={(tab) => setActiveTab(tab)}
+        onNavigateAbout={() => setActiveTab("about")}
       />
     </div>
   );
@@ -2015,7 +2049,52 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
 
 function AppContent() {
   const { user, loading, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<NavigationTab>("dashboard");
+  const [activeTab, setActiveTabState] = useState<NavigationTab>(() => {
+    if (typeof window !== "undefined" && window.location.pathname === "/about") {
+      return "about";
+    }
+    return "dashboard";
+  });
+  const [showPublicAbout, setShowPublicAbout] = useState<boolean>(() => {
+    if (typeof window !== "undefined" && window.location.pathname === "/about") {
+      return true;
+    }
+    return false;
+  });
+
+  const setActiveTab = useCallback((tab: NavigationTab) => {
+    setActiveTabState(tab);
+    if (typeof window !== "undefined") {
+      const targetPath = tab === "about" ? "/about" : "/";
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState({}, "", targetPath);
+      }
+    }
+  }, []);
+
+  const handleOpenPublicAbout = useCallback(() => {
+    setShowPublicAbout(true);
+    if (typeof window !== "undefined" && window.location.pathname !== "/about") {
+      window.history.pushState({}, "", "/about");
+    }
+  }, []);
+
+  const handleClosePublicAbout = useCallback(() => {
+    setShowPublicAbout(false);
+    if (typeof window !== "undefined" && window.location.pathname !== "/") {
+      window.history.pushState({}, "", "/");
+    }
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const isAboutPath = window.location.pathname === "/about";
+      setShowPublicAbout(isAboutPath);
+      setActiveTabState((prev) => (isAboutPath ? "about" : prev === "about" ? "dashboard" : prev));
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   if (loading) {
     return (
@@ -2033,10 +2112,50 @@ function AppContent() {
   if (!user) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col justify-between">
-        <div className="flex-1 flex flex-col justify-center">
-          <LoginPage />
-        </div>
-        <Footer variant="marketing" isAuthenticated={false} />
+        {showPublicAbout ? (
+          <>
+            <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-xs border-b border-slate-200">
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+                <button
+                  type="button"
+                  onClick={handleClosePublicAbout}
+                  className="flex items-center gap-2.5 text-left group cursor-pointer"
+                >
+                  <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <span className="font-bold text-base tracking-tight text-slate-900">
+                    Metadata Checker
+                  </span>
+                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleClosePublicAbout}
+                    className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                  >
+                    Sign In
+                  </button>
+                </div>
+              </div>
+            </header>
+            <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+              <AboutPage
+                isAuthenticated={false}
+                onNavigateHome={handleClosePublicAbout}
+              />
+            </main>
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col justify-center">
+            <LoginPage />
+          </div>
+        )}
+        <Footer
+          variant="marketing"
+          isAuthenticated={false}
+          onNavigateAbout={handleOpenPublicAbout}
+        />
       </div>
     );
   }
