@@ -113,12 +113,6 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const handleQuickFill = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setErrorMessage(null);
-  };
-
   const isPasswordLongEnough = regPassword.length >= 8;
   const hasNumberOrSpecial = /[0-9!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(regPassword);
   const passwordsMatch = regPassword.length > 0 && regPassword === regConfirmPassword;
@@ -256,30 +250,6 @@ export const LoginPage: React.FC = () => {
                 </>
               )}
             </button>
-
-            {/* Quick-Fill Admin Credentials */}
-            <div className="pt-3 border-t border-slate-100">
-              <span className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider text-center mb-2">
-                Quick-Fill Credentials
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleQuickFill("admin@metadata-checker.com", "AdminPassword123!")}
-                  className="px-2.5 py-1.5 text-[11px] rounded-lg border border-purple-200 bg-purple-50/50 hover:bg-purple-100/70 text-purple-800 font-semibold transition-colors cursor-pointer text-center flex items-center justify-center gap-1.5"
-                >
-                  <Shield className="w-3.5 h-3.5 text-purple-600" />
-                  <span>Admin Account</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickFill("admin@example.com", "AdminPassword123!")}
-                  className="px-2.5 py-1.5 text-[11px] rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium transition-colors cursor-pointer text-center"
-                >
-                  Backup Admin
-                </button>
-              </div>
-            </div>
           </form>
         )}
 
