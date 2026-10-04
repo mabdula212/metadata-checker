@@ -40,6 +40,16 @@ export const CookieConsentBanner: React.FC = () => {
     } catch {
       setVisible(true);
     }
+
+    const handleOpenSettings = () => {
+      setVisible(true);
+      setShowCustomize(true);
+    };
+
+    window.addEventListener("mc:open-cookie-settings", handleOpenSettings);
+    return () => {
+      window.removeEventListener("mc:open-cookie-settings", handleOpenSettings);
+    };
   }, []);
 
   const savePreferences = (prefs: CookiePreferences) => {

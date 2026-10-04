@@ -64,6 +64,7 @@ import {
 } from "../lib/analysis/feature-pipeline";
 import { AdminUserManagement } from "./components/admin/AdminUserManagement";
 import { CookieConsentBanner } from "./components/CookieConsentBanner";
+import { Footer } from "./components/layout/Footer";
 
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
 
@@ -2002,23 +2003,12 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
         )}
       </main>
 
-      {/* FOOTER */}
-      <footer className="border-t border-slate-200 bg-white py-6 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-slate-900">Metadata Checker</span>
-            <span>—</span>
-            <span>Financial Document Intelligence SaaS</span>
-          </div>
-          <div className="flex items-center gap-3 text-[11px] text-slate-400">
-            <span>20 MB Limit Verified</span>
-            <span>•</span>
-            <span>In-Memory PDF Decryption</span>
-            <span>•</span>
-            <span>Neon PostgreSQL Active</span>
-          </div>
-        </div>
-      </footer>
+      {/* FOOTER: Full marketing footer on Home/Dashboard, compact app footer on workspace tabs */}
+      <Footer
+        variant={activeTab === "dashboard" ? "marketing" : "app"}
+        isAuthenticated={true}
+        onNavigateTab={(tab) => setActiveTab(tab)}
+      />
     </div>
   );
 }
@@ -2041,7 +2031,14 @@ function AppContent() {
   }
 
   if (!user) {
-    return <LoginPage />;
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col justify-between">
+        <div className="flex-1 flex flex-col justify-center">
+          <LoginPage />
+        </div>
+        <Footer variant="marketing" isAuthenticated={false} />
+      </div>
+    );
   }
 
   return (
