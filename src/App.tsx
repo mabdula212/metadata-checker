@@ -66,6 +66,7 @@ import { AdminUserManagement } from "./components/admin/AdminUserManagement";
 import { CookieConsentBanner } from "./components/CookieConsentBanner";
 import { Footer } from "./components/layout/Footer";
 import { AboutPage } from "./components/AboutPage";
+import { Logo } from "./components/ui/Logo";
 
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
 
@@ -890,37 +891,28 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased">
       {/* GLOBAL APPLICATION SHELL HEADER */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <header className="bg-white border-b border-[#E2E8F0] sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
           {/* Brand Logo & Name */}
-          <div className="flex items-center gap-8">
+          <div className="flex items-center gap-6 lg:gap-8 min-w-0">
             <button
               type="button"
               onClick={() => setActiveTab("dashboard")}
-              className="flex items-center gap-3 text-left cursor-pointer group"
+              className="flex items-center text-left cursor-pointer group shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] rounded-lg"
+              aria-label="Metadata Checker Home"
             >
-              <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs transition-transform group-hover:scale-105">
-                <FileText className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="font-bold text-base tracking-tight text-slate-900 block leading-tight">
-                  Metadata Checker
-                </span>
-                <span className="text-[11px] text-slate-500 font-medium block">
-                  Document Intelligence
-                </span>
-              </div>
+              <Logo variant="full" size="sm" />
             </button>
 
             {/* Desktop Navigation Links */}
-            <nav className="hidden md:flex items-center gap-1">
+            <nav aria-label="Main navigation" className="hidden md:flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => setActiveTab("dashboard")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                   activeTab === "dashboard"
-                    ? "bg-slate-100 text-slate-900"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                    ? "bg-blue-50 text-[#2563EB]"
+                    : "text-[#64748B] hover:text-[#0F172A] hover:bg-slate-50"
                 }`}
               >
                 Dashboard
@@ -928,10 +920,10 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
               <button
                 type="button"
                 onClick={() => setActiveTab("analyze")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                   activeTab === "analyze"
-                    ? "bg-slate-100 text-slate-900"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                    ? "bg-blue-50 text-[#2563EB]"
+                    : "text-[#64748B] hover:text-[#0F172A] hover:bg-slate-50"
                 }`}
               >
                 Analyze PDF
@@ -939,10 +931,10 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
               <button
                 type="button"
                 onClick={() => setActiveTab("recent")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                   activeTab === "recent"
-                    ? "bg-slate-100 text-slate-900"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                    ? "bg-blue-50 text-[#2563EB]"
+                    : "text-[#64748B] hover:text-[#0F172A] hover:bg-slate-50"
                 }`}
               >
                 Recent Files
@@ -950,10 +942,10 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
               <button
                 type="button"
                 onClick={() => setActiveTab("exports")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                   activeTab === "exports"
-                    ? "bg-slate-100 text-slate-900"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                    ? "bg-blue-50 text-[#2563EB]"
+                    : "text-[#64748B] hover:text-[#0F172A] hover:bg-slate-50"
                 }`}
               >
                 Exports
@@ -961,10 +953,10 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
               <button
                 type="button"
                 onClick={() => setActiveTab("about")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                   activeTab === "about"
-                    ? "bg-slate-100 text-slate-900"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                    ? "bg-blue-50 text-[#2563EB]"
+                    : "text-[#64748B] hover:text-[#0F172A] hover:bg-slate-50"
                 }`}
               >
                 About
@@ -974,13 +966,13 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
                   id="admin-nav-users-tab"
                   type="button"
                   onClick={() => setActiveTab("admin")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
                     activeTab === "admin"
-                      ? "bg-purple-50 text-purple-700 font-bold"
-                      : "text-purple-600 hover:bg-purple-50"
+                      ? "bg-blue-50 text-[#2563EB] font-bold"
+                      : "text-[#64748B] hover:text-[#0F172A] hover:bg-slate-50"
                   }`}
                 >
-                  <Shield className="w-3.5 h-3.5" />
+                  <Shield className="w-3.5 h-3.5 text-[#2563EB]" />
                   <span>Admin</span>
                 </button>
               )}
@@ -1244,26 +1236,37 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
         {activeTab === "dashboard" && (
           <div className="space-y-12 animate-in fade-in duration-200">
             {/* HERO SECTION */}
-            <section className="text-center max-w-3xl mx-auto space-y-4 pt-4 sm:pt-6">
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-slate-900">
-                Analyze Your Financial Documents Smarter
+            <section className="text-center max-w-3xl mx-auto space-y-5 pt-4 sm:pt-6">
+              <div className="flex justify-center">
+                <Logo variant="full" size="md" showTagline={true} />
+              </div>
+
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[#0F172A]">
+                Analyze Financial Documents <span className="text-[#2563EB]">Smarter.</span>
               </h1>
-              <p className="text-base sm:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
-                Upload a PDF bank statement, choose the analysis you need, and get structured insights in seconds.
+              <p className="text-sm sm:text-base lg:text-lg text-[#64748B] max-w-2xl mx-auto leading-relaxed">
+                Extract metadata, detect banks, analyze transactions, validate balances, and export structured financial data from PDF documents.
               </p>
               <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setActiveTab("analyze")}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-xs transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-sm font-semibold shadow-xs transition-colors cursor-pointer"
                 >
                   <span>Analyze PDF</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
                 <button
                   type="button"
+                  onClick={() => setActiveTab("about")}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-[#0F172A] border border-[#E2E8F0] text-sm font-semibold shadow-xs transition-colors cursor-pointer"
+                >
+                  <span>Learn More</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => setActiveTab("recent")}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-sm font-semibold shadow-xs transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[#64748B] hover:text-[#0F172A] text-sm font-semibold transition-colors cursor-pointer"
                 >
                   <span>View Recent Files</span>
                 </button>
@@ -1465,114 +1468,112 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
           <div className="space-y-8 animate-in fade-in duration-200">
             {/* Top Workspace Header */}
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
-                Analyze PDF
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#0F172A]">
+                Analyze Your Financial PDF
               </h1>
-              <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                Upload a bank statement and select the analysis you need.
+              <p className="text-xs sm:text-sm text-[#64748B] mt-1">
+                Upload a bank statement or financial PDF to begin analysis.
               </p>
             </div>
 
             {/* Workflow Step Tracker */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+            <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 shadow-xs">
               <div className="flex items-center justify-between gap-2 overflow-x-auto text-xs py-1">
-                {/* Step 1: Upload */}
+                {/* Step 1: 01 Upload */}
                 <div className="flex items-center gap-2 shrink-0">
                   <span
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-mono font-bold transition-colors ${
                       activeResult || isProcessing || selectedRawFile
                         ? "bg-emerald-100 text-emerald-800"
-                        : "bg-blue-600 text-white"
+                        : "bg-[#2563EB] text-white"
                     }`}
                   >
-                    {activeResult || isProcessing || selectedRawFile ? "✓" : "1"}
+                    {activeResult || isProcessing || selectedRawFile ? "✓" : "01"}
                   </span>
                   <span
                     className={`font-semibold ${
                       !selectedRawFile && !isProcessing && !activeResult
-                        ? "text-slate-900 font-bold"
-                        : "text-slate-600"
+                        ? "text-[#0F172A] font-bold"
+                        : "text-[#64748B]"
                     }`}
                   >
-                    Upload PDF
+                    01 Upload
                   </span>
                 </div>
 
                 <div className="h-px w-6 sm:w-12 bg-slate-200 shrink-0" />
 
-                {/* Step 2: Choose Features */}
+                {/* Step 2: 02 Analyze */}
                 <div className="flex items-center gap-2 shrink-0">
                   <span
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
-                      activeResult || isProcessing
-                        ? "bg-emerald-100 text-emerald-800"
-                        : selectedRawFile
-                        ? "bg-blue-600 text-white"
-                        : "bg-slate-100 text-slate-400"
-                    }`}
-                  >
-                    {activeResult || isProcessing ? "✓" : "2"}
-                  </span>
-                  <span
-                    className={`font-semibold ${
-                      selectedRawFile && !isProcessing && !activeResult
-                        ? "text-slate-900 font-bold"
-                        : activeResult || isProcessing
-                        ? "text-slate-600"
-                        : "text-slate-400"
-                    }`}
-                  >
-                    Choose Analysis
-                  </span>
-                </div>
-
-                <div className="h-px w-6 sm:w-12 bg-slate-200 shrink-0" />
-
-                {/* Step 3: Processing */}
-                <div className="flex items-center gap-2 shrink-0">
-                  <span
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-mono font-bold transition-colors ${
                       activeResult
                         ? "bg-emerald-100 text-emerald-800"
-                        : isProcessing
-                        ? "bg-blue-600 text-white animate-pulse"
+                        : selectedRawFile || isProcessing
+                        ? "bg-[#2563EB] text-white"
                         : "bg-slate-100 text-slate-400"
                     }`}
                   >
-                    {activeResult ? "✓" : "3"}
+                    {activeResult ? "✓" : "02"}
                   </span>
                   <span
                     className={`font-semibold ${
-                      isProcessing
-                        ? "text-slate-900 font-bold"
+                      (selectedRawFile || isProcessing) && !activeResult
+                        ? "text-[#0F172A] font-bold"
                         : activeResult
-                        ? "text-slate-600"
+                        ? "text-[#64748B]"
                         : "text-slate-400"
                     }`}
                   >
-                    Processing
+                    02 Analyze
                   </span>
                 </div>
 
                 <div className="h-px w-6 sm:w-12 bg-slate-200 shrink-0" />
 
-                {/* Step 4: Results */}
+                {/* Step 3: 03 Review */}
                 <div className="flex items-center gap-2 shrink-0">
                   <span
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-mono font-bold transition-colors ${
                       activeResult
-                        ? "bg-blue-600 text-white"
+                        ? "bg-[#2563EB] text-white"
+                        : isProcessing
+                        ? "bg-[#2563EB] text-white animate-pulse"
                         : "bg-slate-100 text-slate-400"
                     }`}
                   >
-                    4
+                    {activeResult ? "✓" : "03"}
                   </span>
                   <span
                     className={`font-semibold ${
-                      activeResult ? "text-slate-900 font-bold" : "text-slate-400"
+                      isProcessing || activeResult
+                        ? "text-[#0F172A] font-bold"
+                        : "text-slate-400"
                     }`}
                   >
-                    Results &amp; Export
+                    03 Review
+                  </span>
+                </div>
+
+                <div className="h-px w-6 sm:w-12 bg-slate-200 shrink-0" />
+
+                {/* Step 4: 04 Export */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <span
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-mono font-bold transition-colors ${
+                      activeResult
+                        ? "bg-[#2563EB] text-white"
+                        : "bg-slate-100 text-slate-400"
+                    }`}
+                  >
+                    04
+                  </span>
+                  <span
+                    className={`font-semibold ${
+                      activeResult ? "text-[#0F172A] font-bold" : "text-slate-400"
+                    }`}
+                  >
+                    04 Export
                   </span>
                 </div>
               </div>
@@ -1712,19 +1713,18 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
             ) : isProcessing ? (
               /* DEDICATED PROCESSING WORKSPACE (Sections 9 & 10) */
               <section className="space-y-6 animate-in fade-in duration-200">
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-7 shadow-xs space-y-5">
+                <div className="bg-white border border-[#E2E8F0] rounded-2xl p-6 sm:p-7 shadow-xs space-y-5">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100">
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                      </div>
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <Logo variant="icon" size="sm" />
                       <div className="min-w-0">
-                        <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                          Analyzing Your Document
+                        <span className="text-[11px] font-bold tracking-wider uppercase text-[#2563EB] block">
+                          METADATA CHECKER
+                        </span>
+                        <h2 className="text-base font-bold text-[#0F172A] tracking-tight flex items-center gap-2">
+                          <span>Analyzing your document...</span>
+                          <Loader2 className="w-4 h-4 animate-spin text-[#2563EB]" />
                         </h2>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          We're processing the analysis you selected.
-                        </p>
                       </div>
                     </div>
 
@@ -2096,14 +2096,50 @@ function AppContent() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
+  // Route-based dynamic browser document title (Section 16)
+  useEffect(() => {
+    if (!user) {
+      document.title = showPublicAbout
+        ? "About — Metadata Checker"
+        : "Sign In — Metadata Checker";
+      return;
+    }
+
+    switch (activeTab) {
+      case "analyze":
+        document.title = "Analyze PDF — Metadata Checker";
+        break;
+      case "about":
+        document.title = "About — Metadata Checker";
+        break;
+      case "recent":
+        document.title = "Recent Files — Metadata Checker";
+        break;
+      case "exports":
+        document.title = "Excel Exports — Metadata Checker";
+        break;
+      case "admin":
+        document.title = "Admin Console — Metadata Checker";
+        break;
+      case "dashboard":
+      default:
+        document.title =
+          "Metadata Checker — Intelligent PDF & Financial Document Analysis";
+        break;
+    }
+  }, [user, showPublicAbout, activeTab]);
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-          <p className="text-xs font-medium text-slate-500 tracking-wide">
-            Checking authenticated session...
-          </p>
+          <Logo variant="icon" size="md" />
+          <div className="flex items-center gap-2 pt-1">
+            <Loader2 className="w-4 h-4 animate-spin text-[#2563EB]" />
+            <p className="text-xs font-medium text-[#64748B] tracking-wide">
+              Checking authenticated session...
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -2111,41 +2147,81 @@ function AppContent() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col justify-between">
-        {showPublicAbout ? (
-          <>
-            <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-xs border-b border-slate-200">
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+      <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-between">
+        {/* Public Brand Navbar */}
+        <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-xs border-b border-[#E2E8F0]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+            <button
+              type="button"
+              onClick={handleClosePublicAbout}
+              className="flex items-center text-left group cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] rounded-lg"
+              aria-label="Metadata Checker Home"
+            >
+              <Logo variant="full" size="sm" />
+            </button>
+
+            <div className="flex items-center gap-4 sm:gap-6">
+              <nav aria-label="Public navigation" className="hidden sm:flex items-center gap-5 text-xs font-semibold">
                 <button
                   type="button"
                   onClick={handleClosePublicAbout}
-                  className="flex items-center gap-2.5 text-left group cursor-pointer"
+                  className={`transition-colors cursor-pointer ${
+                    !showPublicAbout
+                      ? "text-[#2563EB]"
+                      : "text-[#64748B] hover:text-[#0F172A]"
+                  }`}
                 >
-                  <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
-                    <FileText className="w-5 h-5" />
-                  </div>
-                  <span className="font-bold text-base tracking-tight text-slate-900">
-                    Metadata Checker
-                  </span>
+                  Home
                 </button>
-                <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleClosePublicAbout}
+                  className="text-[#64748B] hover:text-[#0F172A] transition-colors cursor-pointer"
+                >
+                  Analyze
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenPublicAbout}
+                  className={`transition-colors cursor-pointer ${
+                    showPublicAbout
+                      ? "text-[#2563EB]"
+                      : "text-[#64748B] hover:text-[#0F172A]"
+                  }`}
+                >
+                  About
+                </button>
+              </nav>
+
+              <div className="flex items-center gap-2">
+                {!showPublicAbout && (
                   <button
                     type="button"
-                    onClick={handleClosePublicAbout}
-                    className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                    onClick={handleOpenPublicAbout}
+                    className="sm:hidden px-3 py-1.5 text-xs font-semibold text-[#64748B] hover:text-[#0F172A] rounded-lg transition-colors cursor-pointer"
                   >
-                    Sign In
+                    About
                   </button>
-                </div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleClosePublicAbout}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-xl shadow-2xs transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  Login
+                </button>
               </div>
-            </header>
-            <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
-              <AboutPage
-                isAuthenticated={false}
-                onNavigateHome={handleClosePublicAbout}
-              />
-            </main>
-          </>
+            </div>
+          </div>
+        </header>
+
+        {showPublicAbout ? (
+          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+            <AboutPage
+              isAuthenticated={false}
+              onNavigateHome={handleClosePublicAbout}
+            />
+          </main>
         ) : (
           <div className="flex-1 flex flex-col justify-center">
             <LoginPage />

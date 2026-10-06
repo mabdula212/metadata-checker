@@ -1,1 +1,20 @@
 @import "tailwindcss";
+
+:root {
+  --brand-primary: #2563EB;
+  --brand-primary-dark: #1D4ED8;
+  --brand-navy: #0F172A;
+  --brand-accent: #3B82F6;
+  --brand-background: #F8FAFC;
+  --brand-surface: #FFFFFF;
+  --brand-border: #E2E8F0;
+  --brand-muted: #64748B;
+}
+
+body {
+  background-color: var(--brand-background);
+  color: var(--brand-navy);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

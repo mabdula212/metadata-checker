@@ -1,14 +1,12 @@
 import React, { useState } from "react";
 import {
-  FileText,
   Lock,
-  Shield,
   ShieldCheck,
   Database,
   X,
   CheckCircle2,
-  Layers,
 } from "lucide-react";
+import { Logo } from "../ui/Logo";
 
 export type FooterNavigationTab = "dashboard" | "analyze" | "recent" | "exports" | "about" | "admin";
 
@@ -238,18 +236,25 @@ export const Footer: React.FC<FooterProps> = ({
           className="border-t border-slate-200/90 bg-white mt-auto"
         >
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-              {/* Left: Copyright & Creator */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[#64748B]">
+              {/* Left: Icon Logo, Copyright & Creator */}
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-2.5 gap-y-1">
-                <span className="font-semibold text-slate-900">
+                <Logo variant="icon" size="xs" />
+                <span className="font-semibold text-[#0F172A]">
                   © 2026 Metadata Checker
                 </span>
                 <span className="text-slate-300 hidden sm:inline" aria-hidden="true">
                   ·
                 </span>
-                <span className="text-slate-500">
+                <span className="text-[#64748B]">
                   Designed &amp; Developed by{" "}
-                  <span className="font-semibold text-slate-700">Aziz</span>
+                  <button
+                    type="button"
+                    onClick={handleAboutClick}
+                    className="font-semibold text-[#0F172A] hover:text-[#2563EB] transition-colors cursor-pointer"
+                  >
+                    Aziz
+                  </button>
                 </span>
               </div>
 
@@ -331,20 +336,9 @@ export const Footer: React.FC<FooterProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-8 lg:gap-10 pb-10">
             {/* Column 1: Brand Section (5 cols on lg) */}
             <div className="lg:col-span-5 space-y-3.5">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                  <FileText className="w-4 h-4" aria-hidden="true" />
-                </div>
-                <span className="text-sm font-bold tracking-tight text-slate-900">
-                  METADATA CHECKER
-                </span>
-              </div>
+              <Logo variant="full" size="md" showTagline={true} />
 
-              <p className="text-xs font-semibold text-slate-800 tracking-tight">
-                Intelligent PDF &amp; Financial Document Analysis
-              </p>
-
-              <p className="text-xs text-slate-500 leading-relaxed max-w-sm">
+              <p className="text-xs text-[#64748B] leading-relaxed max-w-sm pt-1">
                 Securely analyze, validate, and export financial documents with confidence.
               </p>
             </div>

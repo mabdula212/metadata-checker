@@ -13,6 +13,7 @@ import {
   UploadCloud,
   Code2,
 } from "lucide-react";
+import { Logo } from "./ui/Logo";
 
 export interface AboutPageProps {
   isAuthenticated: boolean;
@@ -110,16 +111,16 @@ export const AboutPage: React.FC<AboutPageProps> = ({
       </div>
 
       {/* 1. HERO SECTION */}
-      <section className="bg-white border border-slate-200 rounded-2xl p-8 sm:p-12 shadow-xs text-center space-y-4">
-        <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center mx-auto shadow-xs">
-          <FileText className="w-6 h-6" aria-hidden="true" />
+      <section className="bg-white border border-[#E2E8F0] rounded-2xl p-8 sm:p-12 shadow-xs text-center space-y-4">
+        <div className="flex justify-center">
+          <Logo variant="full" size="md" />
         </div>
 
-        <div className="space-y-2 max-w-2xl mx-auto">
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-slate-900">
+        <div className="space-y-2 max-w-2xl mx-auto pt-1">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-[#0F172A]">
             About Metadata Checker
           </h1>
-          <p className="text-sm sm:text-base font-semibold text-blue-600 tracking-tight">
+          <p className="text-sm sm:text-base font-semibold text-[#2563EB] tracking-tight">
             Intelligent PDF &amp; Financial Document Analysis
           </p>
         </div>

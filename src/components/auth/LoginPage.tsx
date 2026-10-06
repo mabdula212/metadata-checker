@@ -14,7 +14,12 @@ import {
   FileText,
   Eye,
   EyeOff,
+  Landmark,
+  Layers,
+  FileSpreadsheet,
+  ShieldCheck,
 } from "lucide-react";
+import { Logo } from "../ui/Logo";
 
 export const LoginPage: React.FC = () => {
   const { login, register } = useAuth();
@@ -122,22 +127,101 @@ export const LoginPage: React.FC = () => {
   const passwordsMatch = regPassword.length > 0 && regPassword === regConfirmPassword;
 
   return (
-    <div className="min-h-[85vh] flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-sm p-7 sm:p-9 space-y-6">
-        {/* Header with Logo */}
-        <div className="flex flex-col items-center text-center">
-          <div className="w-11 h-11 rounded-xl bg-blue-600 text-white flex items-center justify-center mb-3.5 shadow-xs">
-            <FileText className="w-5 h-5" />
+    <div className="min-h-[82vh] flex items-center justify-center px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
+      <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+        {/* Left Column (Desktop): Brand Identity & Value Proposition */}
+        <div className="hidden lg:flex lg:col-span-7 flex-col justify-center space-y-8 pr-4">
+          <div className="space-y-4">
+            <Logo variant="full" size="lg" showTagline={true} />
+
+            <h1 className="text-3xl xl:text-4xl font-extrabold tracking-tight text-[#0F172A] leading-tight pt-2">
+              Analyze Financial Documents{" "}
+              <span className="text-[#2563EB]">Smarter.</span>
+            </h1>
+
+            <p className="text-sm sm:text-base text-[#64748B] leading-relaxed max-w-xl">
+              Extract metadata, detect banks, analyze transactions, validate balances, and export
+              structured financial data from PDF documents with confidence.
+            </p>
           </div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
-            {mode === "login" ? "Welcome back" : "Create an Account"}
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-xs">
-            {mode === "login"
-              ? "Sign in to continue to your document workspace."
-              : "Register to inspect PDF metadata and extract statement records."}
-          </p>
+
+          {/* Core Capabilities Grid */}
+          <div className="grid grid-cols-2 gap-4 max-w-xl">
+            <div className="p-4 rounded-xl bg-white border border-[#E2E8F0] shadow-2xs space-y-1.5">
+              <div className="flex items-center gap-2 text-xs font-bold text-[#0F172A]">
+                <FileText className="w-4 h-4 text-[#2563EB] shrink-0" />
+                <span>PDF Metadata Analysis</span>
+              </div>
+              <p className="text-xs text-[#64748B] leading-relaxed">
+                Inspect structural metadata, producer properties, and SHA-256 document hashes.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-white border border-[#E2E8F0] shadow-2xs space-y-1.5">
+              <div className="flex items-center gap-2 text-xs font-bold text-[#0F172A]">
+                <Landmark className="w-4 h-4 text-[#2563EB] shrink-0" />
+                <span>Bank Detection</span>
+              </div>
+              <p className="text-xs text-[#64748B] leading-relaxed">
+                Recognize Indonesian banking statement layouts, periods, and account identifiers.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-white border border-[#E2E8F0] shadow-2xs space-y-1.5">
+              <div className="flex items-center gap-2 text-xs font-bold text-[#0F172A]">
+                <Layers className="w-4 h-4 text-[#2563EB] shrink-0" />
+                <span>Transaction &amp; Balance Check</span>
+              </div>
+              <p className="text-xs text-[#64748B] leading-relaxed">
+                Parse debit/credit mutations and reconcile mathematical running balances.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-white border border-[#E2E8F0] shadow-2xs space-y-1.5">
+              <div className="flex items-center gap-2 text-xs font-bold text-[#0F172A]">
+                <FileSpreadsheet className="w-4 h-4 text-[#2563EB] shrink-0" />
+                <span>Structured Excel Export</span>
+              </div>
+              <p className="text-xs text-[#64748B] leading-relaxed">
+                Export multi-sheet .xlsx workbooks ready for accounting and audit review.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 text-xs text-[#64748B] pt-1">
+            <span className="inline-flex items-center gap-1.5 font-medium text-[#0F172A]">
+              <ShieldCheck className="w-4 h-4 text-[#2563EB]" />
+              Secure Processing
+            </span>
+            <span aria-hidden="true">·</span>
+            <span>In-Memory PDF Decryption</span>
+            <span aria-hidden="true">·</span>
+            <span>Protected Account Access</span>
+          </div>
         </div>
+
+        {/* Right Column: Login / Register Card */}
+        <div className="lg:col-span-5 w-full max-w-md mx-auto">
+          {/* Mobile Brand Header (Shown above card on mobile/tablet) */}
+          <div className="flex lg:hidden flex-col items-center text-center mb-6">
+            <Logo variant="full" size="md" showTagline={true} />
+          </div>
+
+          <div className="w-full bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6 sm:p-8 space-y-6">
+            {/* Card Header */}
+            <div className="flex flex-col items-center text-center">
+              <div className="hidden lg:flex mb-3">
+                <Logo variant="icon" size="sm" />
+              </div>
+              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#0F172A]">
+                {mode === "login" ? "Sign in to Metadata Checker" : "Create an Account"}
+              </h2>
+              <p className="text-xs sm:text-sm text-[#64748B] mt-1 max-w-xs">
+                {mode === "login"
+                  ? "Enter your workspace credentials to access financial document analysis."
+                  : "Register to inspect PDF metadata and extract statement records."}
+              </p>
+            </div>
 
         {/* Tab Switcher */}
         <div className="flex bg-slate-100 p-1 rounded-xl">
@@ -249,7 +333,7 @@ export const LoginPage: React.FC = () => {
               id="login-submit-button"
               type="submit"
               disabled={loading}
-              className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 px-4 bg-[#2563EB] hover:bg-[#1D4ED8] active:bg-blue-800 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               {loading ? (
                 <>
@@ -386,7 +470,7 @@ export const LoginPage: React.FC = () => {
               id="register-submit-button"
               type="submit"
               disabled={loading || !isPasswordLongEnough || !hasNumberOrSpecial || !passwordsMatch}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs sm:text-sm font-semibold rounded-xl shadow-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
               {loading ? (
                 <>
@@ -402,6 +486,8 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
         )}
+          </div>
+        </div>
       </div>
     </div>
   );
