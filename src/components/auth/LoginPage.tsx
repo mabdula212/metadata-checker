@@ -35,7 +35,14 @@ interface PendingDeviceApprovalState {
 }
 
 export const LoginPage: React.FC = () => {
-  const { login, register, checkLoginRequestStatus, cancelLoginRequest } = useAuth();
+  const {
+    login,
+    register,
+    checkLoginRequestStatus,
+    cancelLoginRequest,
+    sessionRevokedMessage,
+    clearSessionRevokedMessage,
+  } = useAuth();
 
   // Mode: "login" | "register"
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -488,6 +495,23 @@ export const LoginPage: React.FC = () => {
             Create Account
           </button>
         </div>
+
+        {/* Session Revoked Alert (when kicked out by New Device Approval) */}
+        {sessionRevokedMessage && !errorMessage && (
+          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start justify-between gap-2.5">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-600" />
+              <span className="font-medium leading-relaxed">{sessionRevokedMessage}</span>
+            </div>
+            <button
+              type="button"
+              onClick={clearSessionRevokedMessage}
+              className="text-amber-600 hover:text-amber-900 font-bold text-xs cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Error Alert */}
         {errorMessage && (

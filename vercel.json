@@ -4,6 +4,14 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/auth/login-request",
+      "destination": "/api/auth/session?__route=login-request"
+    },
+    {
+      "source": "/api/admin/login-requests",
+      "destination": "/api/admin/users?__route=login-requests"
+    },
+    {
       "source": "/api/excel-export/:exportId",
       "destination": "/api/excel-export?exportId=:exportId"
     },

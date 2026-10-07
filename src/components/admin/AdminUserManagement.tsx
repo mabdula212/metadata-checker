@@ -138,9 +138,9 @@ export const AdminUserManagement: React.FC = () => {
   const [resetNewPassword, setResetNewPassword] = useState("");
   const [showResetPasswordInput, setShowResetPasswordInput] = useState(false);
 
-  const fetchUsers = useCallback(async () => {
+  const fetchUsers = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const [usersRes, reqsRes] = await Promise.all([
         safeApiFetch<{ success: boolean; users: ManagedUser[]; error?: string }>("/api/admin/users"),
         safeApiFetch<{ success: boolean; loginRequests: AdminLoginRequestItem[]; error?: string }>(
@@ -150,7 +150,7 @@ export const AdminUserManagement: React.FC = () => {
 
       if (usersRes.ok && usersRes.data?.success) {
         setUsers(usersRes.data.users);
-      } else {
+      } else if (!silent) {
         setErrorMessage(usersRes.error || usersRes.data?.error || "Gagal memuat data pengguna.");
       }
 
@@ -158,14 +158,20 @@ export const AdminUserManagement: React.FC = () => {
         setLoginRequests(reqsRes.data.loginRequests);
       }
     } catch {
-      setErrorMessage("Kesalahan jaringan saat memuat daftar pengguna.");
+      if (!silent) {
+        setErrorMessage("Kesalahan jaringan saat memuat daftar pengguna.");
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchUsers();
+    fetchUsers(false);
+    const interval = setInterval(() => {
+      fetchUsers(true);
+    }, 5000);
+    return () => clearInterval(interval);
   }, [fetchUsers]);
 
   const pendingDeviceLoginRequests = useMemo(
@@ -576,7 +582,7 @@ export const AdminUserManagement: React.FC = () => {
 
           <button
             type="button"
-            onClick={fetchUsers}
+            onClick={() => fetchUsers(false)}
             disabled={loading}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
           >

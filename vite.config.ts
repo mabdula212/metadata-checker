@@ -12,10 +12,12 @@ import loginHandler from './api/auth/login.js';
 import registerHandler from './api/auth/register.js';
 import logoutHandler from './api/auth/logout.js';
 import sessionHandler from './api/auth/session.js';
-import loginRequestStatusHandler from './api/auth/login-request.js';
 import adminUsersHandler from './api/admin/users.js';
 import adminResetPasswordHandler from './api/admin/reset-password.js';
-import adminLoginRequestsHandler from './api/admin/login-requests.js';
+import {
+  loginRequestStatusHandler,
+  adminLoginRequestsHandler,
+} from './lib/auth/index.js';
 
 function apiPlugin(): Plugin {
   const handleApi = (req: any, res: any, next: any) => {

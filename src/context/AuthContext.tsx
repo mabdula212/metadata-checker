@@ -39,6 +39,8 @@ interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
   token: string | null;
+  sessionRevokedMessage: string | null;
+  clearSessionRevokedMessage: () => void;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<LoginResponse>;
   checkLoginRequestStatus: (requestId: string) => Promise<LoginRequestPollResult>;
   cancelLoginRequest: (requestId: string) => Promise<void>;
@@ -56,6 +58,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [sessionRevokedMessage, setSessionRevokedMessage] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(() => {
     try {
       return localStorage.getItem("mc_token");
@@ -63,6 +66,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return null;
     }
   });
+
+  const clearSessionRevokedMessage = useCallback(() => {
+    setSessionRevokedMessage(null);
+  }, []);
 
   const refreshSession = useCallback(async () => {
     try {
@@ -83,10 +90,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (res.ok) {
         const data = await res.json();
+        if (data.deviceToken) {
+          try {
+            localStorage.setItem("mc_device_token", data.deviceToken);
+          } catch {}
+        }
         if (data.authenticated && data.user) {
           setUser(data.user);
         } else {
-          setUser(null);
+          setUser((prevUser) => {
+            if (prevUser || data.sessionRevoked) {
+              setSessionRevokedMessage(
+                "Sesi pada perangkat ini telah dihentikan karena akun Anda telah diotorisasi pada perangkat baru atau dicabut oleh Administrator."
+              );
+            }
+            return null;
+          });
           localStorage.removeItem("mc_token");
           setToken(null);
         }
@@ -94,7 +113,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(null);
       }
     } catch {
-      setUser(null);
+      // Do not clear user on transient network hiccup
     } finally {
       setLoading(false);
     }
@@ -103,6 +122,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     refreshSession();
   }, [refreshSession]);
+
+  // Real-time session heartbeat & revocation listener for active sessions
+  useEffect(() => {
+    const handleSessionRevokedEvent = () => {
+      localStorage.removeItem("mc_token");
+      setToken(null);
+      setUser(null);
+      setSessionRevokedMessage(
+        "Sesi pada perangkat ini telah dihentikan karena akun Anda telah diotorisasi pada perangkat baru atau dicabut oleh Administrator."
+      );
+    };
+
+    window.addEventListener("mc:session-revoked", handleSessionRevokedEvent);
+
+    if (!user) {
+      return () => {
+        window.removeEventListener("mc:session-revoked", handleSessionRevokedEvent);
+      };
+    }
+
+    const interval = setInterval(() => {
+      refreshSession();
+    }, 5000);
+
+    const handleFocus = () => {
+      refreshSession();
+    };
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("mc:session-revoked", handleSessionRevokedEvent);
+    };
+  }, [user, refreshSession]);
 
   const login = async (email: string, password: string, rememberMe: boolean = false): Promise<LoginResponse> => {
     try {
@@ -152,6 +206,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } catch {}
           setToken(data.token);
         }
+        setSessionRevokedMessage(null);
         setUser(data.user);
         return { success: true };
       }
@@ -339,6 +394,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         localStorage.removeItem("mc_token");
       } catch {}
+      setSessionRevokedMessage(null);
       setToken(null);
       setUser(null);
     }
@@ -350,6 +406,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         loading,
         token,
+        sessionRevokedMessage,
+        clearSessionRevokedMessage,
         login,
         checkLoginRequestStatus,
         cancelLoginRequest,

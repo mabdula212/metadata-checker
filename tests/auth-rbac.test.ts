@@ -354,8 +354,8 @@ describe("Authentication & Security Module", () => {
 
     it("should enforce 1 active device per user, create PENDING LoginRequest on new device, and support Admin APPROVE & REJECT", async () => {
       const loginHandler = (await import("../api/auth/login.js")).default;
-      const loginRequestStatusHandler = (await import("../api/auth/login-request.js")).default;
-      const adminLoginRequestsHandler = (await import("../api/admin/login-requests.js")).default;
+      const loginRequestStatusHandler = (await import("../api/auth/session.js")).default;
+      const adminLoginRequestsHandler = (await import("../api/admin/users.js")).default;
       const { prisma } = await import("../lib/db/prisma.js");
       const { hashPassword, createSession, validateRequestSession } = await import(
         "../lib/auth/index.js"
@@ -472,6 +472,7 @@ describe("Authentication & Security Module", () => {
         let rejectBody = "";
         const rejectReq: any = {
           method: "POST",
+          url: "/api/admin/login-requests",
           headers: {
             "content-type": "application/json",
             authorization: `Bearer ${adminSession.sessionToken}`,
@@ -548,6 +549,7 @@ describe("Authentication & Security Module", () => {
         let approveBody = "";
         const approveReq: any = {
           method: "POST",
+          url: "/api/admin/login-requests",
           headers: {
             "content-type": "application/json",
             authorization: `Bearer ${adminSession.sessionToken}`,

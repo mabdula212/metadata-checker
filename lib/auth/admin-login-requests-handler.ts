@@ -1,12 +1,12 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import { Role } from "@prisma/client";
-import { prisma } from "../../lib/db/prisma.js";
+import { prisma } from "../db/prisma.js";
 import {
   requireRole,
   expireStaleLoginRequests,
   logAuditEvent,
   DEVICE_AUDIT_ACTIONS,
-} from "../../lib/auth/index.js";
+} from "./index.js";
 
 /**
  * Admin Device Login Requests & Device Authorization Management Handler.

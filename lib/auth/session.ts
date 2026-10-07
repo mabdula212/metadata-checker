@@ -162,6 +162,22 @@ export async function validateRequestSession(req: IncomingMessage): Promise<Auth
           data: { lastSeenAt: new Date() },
         })
         .catch(() => null);
+    } else {
+      // Unbound session: if the user already has an ACTIVE authorized device,
+      // reject any unbound session that does not carry the matching device token
+      const activeDevice = await prisma.device.findFirst({
+        where: { userId: session.userId, status: "ACTIVE" },
+      });
+      if (activeDevice) {
+        const requestDeviceToken = extractDeviceToken(req);
+        if (
+          !requestDeviceToken ||
+          hashDeviceToken(requestDeviceToken) !== activeDevice.deviceTokenHash
+        ) {
+          await prisma.session.delete({ where: { id: session.id } }).catch(() => null);
+          return null;
+        }
+      }
     }
 
     return {

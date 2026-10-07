@@ -38,6 +38,9 @@ export async function safeApiFetch<T = any>(
     if (contentType.includes("application/json")) {
       try {
         const json = await res.json();
+        if (res.status === 401 && typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("mc:session-revoked"));
+        }
         return {
           ok: res.ok,
           status: res.status,
@@ -58,6 +61,9 @@ export async function safeApiFetch<T = any>(
     let errorMsg = `Server response error (${res.status})`;
 
     if (res.status === 401) {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("mc:session-revoked"));
+      }
       errorMsg = "Authentication required. Please sign in again.";
     } else if (res.status === 403) {
       errorMsg = "Access denied or session expired. Please refresh the page.";

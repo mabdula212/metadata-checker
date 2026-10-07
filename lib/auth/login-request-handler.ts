@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { prisma } from "../../lib/db/prisma.js";
+import { prisma } from "../db/prisma.js";
 import {
   extractDeviceToken,
   hashDeviceToken,
@@ -8,7 +8,7 @@ import {
   buildSessionCookie,
   buildDeviceCookie,
   logAuditEvent,
-} from "../../lib/auth/index.js";
+} from "./index.js";
 
 /**
  * API Handler for Device Login Request Polling & Cancellation.

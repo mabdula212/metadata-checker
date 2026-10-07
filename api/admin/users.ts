@@ -7,19 +7,29 @@ import {
   validatePasswordStrength,
   destroyAllUserSessions,
   logAuditEvent,
+  adminLoginRequestsHandler,
 } from "../../lib/auth/index.js";
 
 /**
- * Admin User Management Handler.
+ * Admin User Management & Device Login Requests Handler.
  * Endpoints:
  * - GET   /api/admin/users
  * - POST  /api/admin/users
  * - PATCH /api/admin/users
+ * - GET/POST/PATCH /api/admin/login-requests (via Vercel rewrite)
  */
 export default async function adminUsersHandler(
   req: IncomingMessage,
   res: ServerResponse
 ) {
+  const url = req.url || "/api/admin/users";
+  if (
+    url.includes("/api/admin/login-requests") ||
+    url.includes("__route=login-requests")
+  ) {
+    return adminLoginRequestsHandler(req, res);
+  }
+
   res.setHeader("Content-Type", "application/json");
 
   // Server-side RBAC enforcement: Only ADMIN can access

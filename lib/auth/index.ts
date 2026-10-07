@@ -7,3 +7,5 @@ export * from "./device.js";
 export * from "./session.js";
 export * from "./guards.js";
 export * from "./init.js";
+export { default as loginRequestStatusHandler } from "./login-request-handler.js";
+export { default as adminLoginRequestsHandler } from "./admin-login-requests-handler.js";
