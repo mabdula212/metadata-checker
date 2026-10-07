@@ -117,6 +117,8 @@ export const AdminUserManagement: React.FC = () => {
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<ManagedUser | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedUserForDelete, setSelectedUserForDelete] = useState<ManagedUser | null>(null);
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
 
   // New user form state
   const [newEmail, setNewEmail] = useState("");
@@ -149,7 +151,10 @@ export const AdminUserManagement: React.FC = () => {
       ]);
 
       if (usersRes.ok && usersRes.data?.success) {
-        setUsers(usersRes.data.users);
+        const fetchedUsers = usersRes.data.users;
+        setUsers(fetchedUsers);
+        const validIdSet = new Set(fetchedUsers.map((u) => u.id));
+        setSelectedUserIds((prev) => prev.filter((id) => validIdSet.has(id)));
       } else if (!silent) {
         setErrorMessage(usersRes.error || usersRes.data?.error || "Gagal memuat data pengguna.");
       }
@@ -316,6 +321,42 @@ export const AdminUserManagement: React.FC = () => {
       return true;
     });
   }, [users, statusFilter, searchQuery]);
+
+  const selectableFilteredUsers = useMemo(
+    () => filteredUsers.filter((u) => u.id !== currentAdmin?.id),
+    [filteredUsers, currentAdmin?.id]
+  );
+
+  const isAllFilteredSelected = useMemo(
+    () =>
+      selectableFilteredUsers.length > 0 &&
+      selectableFilteredUsers.every((u) => selectedUserIds.includes(u.id)),
+    [selectableFilteredUsers, selectedUserIds]
+  );
+
+  const selectedUsersObjects = useMemo(
+    () => users.filter((u) => selectedUserIds.includes(u.id) && u.id !== currentAdmin?.id),
+    [users, selectedUserIds, currentAdmin?.id]
+  );
+
+  const toggleSelectUser = (userId: string) => {
+    if (userId === currentAdmin?.id) return;
+    setSelectedUserIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  };
+
+  const toggleSelectAllFiltered = () => {
+    const targetIds = selectableFilteredUsers.map((u) => u.id);
+    if (targetIds.length === 0) return;
+
+    if (isAllFilteredSelected) {
+      const targetSet = new Set(targetIds);
+      setSelectedUserIds((prev) => prev.filter((id) => !targetSet.has(id)));
+    } else {
+      setSelectedUserIds((prev) => Array.from(new Set([...prev, ...targetIds])));
+    }
+  };
 
   const handleSetUserStatus = async (
     targetUser: ManagedUser,
@@ -502,6 +543,7 @@ export const AdminUserManagement: React.FC = () => {
       });
       if (res.ok && res.data?.success) {
         setSuccessMessage(`Akun pengguna ${selectedUserForDelete.email} berhasil dihapus secara permanen.`);
+        setSelectedUserIds((prev) => prev.filter((id) => id !== selectedUserForDelete.id));
         setShowDeleteModal(false);
         setSelectedUserForDelete(null);
         await fetchUsers();
@@ -510,6 +552,42 @@ export const AdminUserManagement: React.FC = () => {
       }
     } catch {
       setErrorMessage("Kesalahan jaringan saat menghapus akun pengguna.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleBulkDeleteUsers = async () => {
+    if (selectedUsersObjects.length === 0) return;
+
+    setActionLoading(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const idsToDelete = selectedUsersObjects.map((u) => u.id);
+      const res = await safeApiFetch<any>("/api/admin/users", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userIds: idsToDelete,
+        }),
+      });
+      if (res.ok && res.data?.success) {
+        setSuccessMessage(
+          res.data.message ||
+            `${idsToDelete.length} akun pengguna berhasil dihapus secara permanen.`
+        );
+        setSelectedUserIds([]);
+        setShowBulkDeleteModal(false);
+        await fetchUsers();
+      } else {
+        setErrorMessage(
+          res.error || res.data?.error || "Gagal menghapus beberapa akun pengguna sekaligus."
+        );
+      }
+    } catch {
+      setErrorMessage("Kesalahan jaringan saat menghapus beberapa akun pengguna.");
     } finally {
       setActionLoading(false);
     }
@@ -949,12 +1027,62 @@ export const AdminUserManagement: React.FC = () => {
         </div>
       </div>
 
+      {/* Bulk Selection Action Bar */}
+      {selectedUsersObjects.length > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-rose-50/90 border border-rose-200 rounded-2xl p-4 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 font-bold text-xs">
+              {selectedUsersObjects.length}
+            </div>
+            <div>
+              <div className="text-xs sm:text-sm font-bold text-rose-950">
+                {selectedUsersObjects.length} Akun Pengguna Dipilih
+              </div>
+              <div className="text-[11px] text-rose-800">
+                Anda dapat menghapus seluruh akun yang dipilih sekaligus secara permanen.
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setSelectedUserIds([])}
+              disabled={actionLoading}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
+            >
+              Batal Pilih
+            </button>
+            <button
+              id="admin-bulk-delete-btn"
+              type="button"
+              onClick={() => setShowBulkDeleteModal(true)}
+              disabled={actionLoading}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Hapus Sekaligus ({selectedUsersObjects.length} Akun)</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* User Records Table */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
               <tr>
+                <th className="py-3 pl-4 pr-2 w-10">
+                  <input
+                    type="checkbox"
+                    checked={isAllFilteredSelected}
+                    disabled={loading || selectableFilteredUsers.length === 0}
+                    onChange={toggleSelectAllFiltered}
+                    title="Pilih / batalkan pilih semua akun pengguna pada daftar ini"
+                    className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  />
+                </th>
                 <th className="py-3 px-4">Pengguna</th>
                 <th className="py-3 px-4">Password</th>
                 <th className="py-3 px-4">Perangkat Aktif (1 Device)</th>
@@ -967,14 +1095,14 @@ export const AdminUserManagement: React.FC = () => {
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                  <td colSpan={8} className="py-8 text-center text-slate-400">
                     <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-slate-500" />
                     Memuat data akun pengguna...
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                  <td colSpan={8} className="py-8 text-center text-slate-400">
                     Tidak ada akun pengguna yang sesuai dengan filter.
                   </td>
                 </tr>
@@ -985,9 +1113,29 @@ export const AdminUserManagement: React.FC = () => {
                   const isPending = u.status === "PENDING";
                   const isAdmin = u.role === "ADMIN";
                   const isPwdVisible = showAllPasswords || Boolean(visiblePasswordMap[u.id]);
+                  const isSelected = selectedUserIds.includes(u.id);
 
                   return (
-                    <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
+                    <tr
+                      key={u.id}
+                      className={`transition-colors ${
+                        isSelected ? "bg-rose-50/40 hover:bg-rose-50/60" : "hover:bg-slate-50/60"
+                      }`}
+                    >
+                      <td className="py-3 pl-4 pr-2 w-10">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          disabled={isCurrent || actionLoading}
+                          onChange={() => toggleSelectUser(u.id)}
+                          title={
+                            isCurrent
+                              ? "Akun Admin Anda sendiri tidak dapat dipilih untuk dihapus"
+                              : `Pilih akun ${u.email}`
+                          }
+                          className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                        />
+                      </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-1.5">
                           <span className="font-semibold text-slate-900">{u.name || "Unnamed"}</span>
@@ -1566,6 +1714,78 @@ export const AdminUserManagement: React.FC = () => {
                 className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-semibold shadow-xs transition-colors cursor-pointer"
               >
                 {actionLoading ? "Menghapus..." : "Ya, Hapus Permanen"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Bulk Delete Users Confirmation Modal */}
+      {showBulkDeleteModal && selectedUsersObjects.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-7 max-w-lg w-full shadow-lg space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-base font-bold text-rose-700">
+                Hapus Sekaligus {selectedUsersObjects.length} Akun Pengguna
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowBulkDeleteModal(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-600 leading-relaxed space-y-3">
+              <p>
+                Apakah Anda yakin ingin menghapus{" "}
+                <span className="font-bold text-slate-900">
+                  {selectedUsersObjects.length} akun pengguna
+                </span>{" "}
+                berikut ini secara permanen?
+              </p>
+
+              <div className="max-h-44 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 divide-y divide-slate-200/70">
+                {selectedUsersObjects.map((u) => (
+                  <div
+                    key={u.id}
+                    className="px-3 py-2 flex items-center justify-between gap-2 text-[11px]"
+                  >
+                    <div>
+                      <span className="font-semibold text-slate-900">
+                        {u.name || "Unnamed"}
+                      </span>{" "}
+                      <span className="font-mono text-slate-500">({u.email})</span>
+                    </div>
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-white border border-slate-200 text-slate-600">
+                      {u.role}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-rose-600 font-medium">
+                Seluruh sesi aktif, otorisasi perangkat, dokumen, dan riwayat ekspor milik akun-akun yang dipilih juga akan dihapus secara permanen.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 text-xs">
+              <button
+                type="button"
+                onClick={() => setShowBulkDeleteModal(false)}
+                className="px-3 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-medium cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkDeleteUsers}
+                disabled={actionLoading}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {actionLoading
+                  ? "Menghapus..."
+                  : `Ya, Hapus ${selectedUsersObjects.length} Akun Permanen`}
               </button>
             </div>
           </div>

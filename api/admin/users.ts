@@ -391,10 +391,111 @@ export default async function adminUsersHandler(
   }
 
   // -------------------------------------------------------------
-  // DELETE: Permanently delete a user account
+  // DELETE: Permanently delete one or multiple user accounts
   // -------------------------------------------------------------
   if (req.method === "DELETE") {
     const urlObj = new URL(req.url || "/api/admin/users", "http://localhost");
+
+    // Check if bulk userIds array is provided
+    const rawUserIds = Array.isArray(body.userIds) ? body.userIds : null;
+
+    if (rawUserIds) {
+      const requestedIds = Array.from(
+        new Set(
+          rawUserIds
+            .filter((id): id is string => typeof id === "string")
+            .map((id) => id.trim())
+            .filter(Boolean)
+        )
+      );
+
+      if (requestedIds.length === 0) {
+        res.statusCode = 400;
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: "Pilih minimal satu akun pengguna untuk dihapus.",
+          })
+        );
+        return;
+      }
+
+      const deletableIds = requestedIds.filter((id) => id !== adminUser.id);
+      if (deletableIds.length === 0) {
+        res.statusCode = 400;
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: "Anda tidak dapat menghapus akun Admin Anda sendiri.",
+          })
+        );
+        return;
+      }
+
+      try {
+        const targetUsers = await prisma.user.findMany({
+          where: { id: { in: deletableIds } },
+          select: { id: true, email: true, role: true },
+        });
+
+        if (targetUsers.length === 0) {
+          res.statusCode = 404;
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: "Akun pengguna yang dipilih tidak ditemukan.",
+            })
+          );
+          return;
+        }
+
+        const foundIds = targetUsers.map((u) => u.id);
+
+        await prisma.session.deleteMany({
+          where: { userId: { in: foundIds } },
+        });
+
+        const deleteResult = await prisma.user.deleteMany({
+          where: { id: { in: foundIds } },
+        });
+
+        await logAuditEvent({
+          userId: adminUser.id,
+          action: "USERS_BULK_DELETED",
+          entityType: "USER",
+          metadata: {
+            deletedCount: deleteResult.count,
+            deletedUsers: targetUsers.map((u) => ({
+              id: u.id,
+              email: u.email,
+              role: u.role,
+            })),
+          },
+        });
+
+        res.statusCode = 200;
+        res.end(
+          JSON.stringify({
+            success: true,
+            deletedCount: deleteResult.count,
+            deletedIds: foundIds,
+            message: `${deleteResult.count} akun pengguna berhasil dihapus secara permanen.`,
+          })
+        );
+        return;
+      } catch (err) {
+        console.error("[ADMIN_USERS_BULK_DELETE_ERROR]", err);
+        res.statusCode = 500;
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: "Gagal menghapus beberapa akun pengguna sekaligus.",
+          })
+        );
+        return;
+      }
+    }
+
     const targetUserId =
       (typeof body.userId === "string" ? body.userId.trim() : "") ||
       urlObj.searchParams.get("userId")?.trim() ||
@@ -402,7 +503,7 @@ export default async function adminUsersHandler(
 
     if (!targetUserId) {
       res.statusCode = 400;
-      res.end(JSON.stringify({ success: false, error: "Missing required 'userId'." }));
+      res.end(JSON.stringify({ success: false, error: "Missing required 'userId' or 'userIds'." }));
       return;
     }
 
