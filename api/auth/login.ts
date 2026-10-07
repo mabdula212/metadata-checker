@@ -4,6 +4,14 @@ import {
   verifyPassword,
   createSession,
   buildSessionCookie,
+  buildDeviceCookie,
+  extractDeviceToken,
+  generateDeviceToken,
+  hashDeviceToken,
+  parseDeviceMetadata,
+  expireStaleLoginRequests,
+  LOGIN_REQUEST_EXPIRATION_MINUTES,
+  DEVICE_AUDIT_ACTIONS,
   checkRateLimit,
   resetRateLimit,
   logAuditEvent,
@@ -201,36 +209,209 @@ export default async function loginHandler(
     // Reset rate limit on success
     resetRateLimit(rateKey);
 
-    // Create persistent server session
-    const session = await createSession(user.id);
+    // -------------------------------------------------------------------------
+    // DEVICE AUTHORIZATION & ONE-USER-ONE-ACTIVE-DEVICE ENFORCEMENT
+    // -------------------------------------------------------------------------
+    const existingRawDeviceToken = extractDeviceToken(req, body.deviceToken);
+    const rawDeviceToken = existingRawDeviceToken || generateDeviceToken();
+    const deviceTokenHash = hashDeviceToken(rawDeviceToken);
+    const { deviceName, browser, operatingSystem } = parseDeviceMetadata(req.headers["user-agent"]);
 
-    // Set HttpOnly session cookie
-    const maxAge = rememberMe ? 30 * 24 * 60 * 60 : undefined;
-    res.setHeader("Set-Cookie", buildSessionCookie(session.sessionToken, maxAge));
+    await expireStaleLoginRequests(user.id);
 
-    // Audit log successful login
-    await logAuditEvent({
-      userId: user.id,
-      action: "LOGIN",
-      entityType: "USER",
-      entityId: user.id,
-      metadata: { email: user.email, role: user.role },
+    const allUserDevices = await prisma.device.findMany({
+      where: { userId: user.id },
     });
 
-    res.statusCode = 200;
+    const matchingDevice = allUserDevices.find((d) => d.deviceTokenHash === deviceTokenHash);
+    const activeDevices = allUserDevices.filter((d) => d.status === "ACTIVE");
+
+    // Case 1: Current device is already ACTIVE and authorized
+    // Case 2: User has never registered any device yet (first-ever login) or Admin has 0 active devices
+    const isAuthorizedActiveDevice = matchingDevice && matchingDevice.status === "ACTIVE";
+    const isFirstDeviceEver =
+      allUserDevices.length === 0 || (user.role === "ADMIN" && activeDevices.length === 0);
+
+    if (isAuthorizedActiveDevice || isFirstDeviceEver) {
+      const now = new Date();
+      let authorizedDevice = matchingDevice;
+
+      if (authorizedDevice) {
+        authorizedDevice = await prisma.device.update({
+          where: { id: authorizedDevice.id },
+          data: {
+            status: "ACTIVE",
+            deviceName,
+            browser,
+            operatingSystem,
+            lastSeenAt: now,
+            revokedAt: null,
+          },
+        });
+      } else {
+        authorizedDevice = await prisma.device.create({
+          data: {
+            userId: user.id,
+            deviceTokenHash,
+            deviceName,
+            browser,
+            operatingSystem,
+            status: "ACTIVE",
+            lastSeenAt: now,
+          },
+        });
+      }
+
+      // Enforce strictly ONE active device and ONE active session for this user
+      await prisma.device.updateMany({
+        where: {
+          userId: user.id,
+          id: { not: authorizedDevice.id },
+          status: "ACTIVE",
+        },
+        data: {
+          status: "REVOKED",
+          revokedAt: now,
+        },
+      });
+
+      await prisma.session.deleteMany({
+        where: { userId: user.id },
+      });
+
+      // Create persistent server session bound to the authorized device
+      const session = await createSession(user.id, authorizedDevice.id);
+
+      // Set HttpOnly session cookie + persistent HttpOnly device cookie
+      const maxAge = rememberMe ? 30 * 24 * 60 * 60 : undefined;
+      res.setHeader("Set-Cookie", [
+        buildSessionCookie(session.sessionToken, maxAge),
+        buildDeviceCookie(rawDeviceToken),
+      ]);
+
+      // Audit log successful login
+      await logAuditEvent({
+        userId: user.id,
+        action: "LOGIN",
+        entityType: "USER",
+        entityId: user.id,
+        metadata: {
+          email: user.email,
+          role: user.role,
+          deviceId: authorizedDevice.id,
+          deviceName: authorizedDevice.deviceName,
+          browser: authorizedDevice.browser,
+          operatingSystem: authorizedDevice.operatingSystem,
+        },
+      });
+
+      res.statusCode = 200;
+      res.end(
+        JSON.stringify({
+          success: true,
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            status: user.status,
+          },
+          token: session.sessionToken,
+          deviceToken: rawDeviceToken,
+        })
+      );
+      return;
+    }
+
+    // Case 3: New / Unrecognized / Previously Revoked Device -> Require Admin Approval!
+    const now = new Date();
+    const pendingDevice = matchingDevice
+      ? await prisma.device.update({
+          where: { id: matchingDevice.id },
+          data: {
+            status: "PENDING",
+            deviceName,
+            browser,
+            operatingSystem,
+            lastSeenAt: now,
+            revokedAt: null,
+          },
+        })
+      : await prisma.device.create({
+          data: {
+            userId: user.id,
+            deviceTokenHash,
+            deviceName,
+            browser,
+            operatingSystem,
+            status: "PENDING",
+            lastSeenAt: now,
+          },
+        });
+
+    // Reuse existing unexpired PENDING LoginRequest or create a new one
+    let loginRequest = await prisma.loginRequest.findFirst({
+      where: {
+        userId: user.id,
+        deviceId: pendingDevice.id,
+        status: "PENDING",
+        expiresAt: { gt: now },
+      },
+      orderBy: { requestedAt: "desc" },
+    });
+
+    if (!loginRequest) {
+      const expiresAt = new Date(now.getTime() + LOGIN_REQUEST_EXPIRATION_MINUTES * 60 * 1000);
+      loginRequest = await prisma.loginRequest.create({
+        data: {
+          userId: user.id,
+          deviceId: pendingDevice.id,
+          status: "PENDING",
+          expiresAt,
+        },
+      });
+    }
+
+    // Set ONLY the device cookie so this browser maintains its device identity while awaiting approval
+    res.setHeader("Set-Cookie", buildDeviceCookie(rawDeviceToken));
+
+    await logAuditEvent({
+      userId: user.id,
+      action: DEVICE_AUDIT_ACTIONS.DEVICE_LOGIN_REQUESTED,
+      entityType: "LOGIN_REQUEST",
+      entityId: loginRequest.id,
+      metadata: {
+        email: user.email,
+        deviceId: pendingDevice.id,
+        deviceName: pendingDevice.deviceName,
+        browser: pendingDevice.browser,
+        operatingSystem: pendingDevice.operatingSystem,
+        loginRequestId: loginRequest.id,
+        expiresAt: loginRequest.expiresAt.toISOString(),
+      },
+    });
+
+    res.statusCode = 403;
     res.end(
       JSON.stringify({
-        success: true,
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          status: user.status,
+        success: false,
+        code: "DEVICE_APPROVAL_REQUIRED",
+        requiresDeviceApproval: true,
+        loginRequestId: loginRequest.id,
+        deviceToken: rawDeviceToken,
+        device: {
+          id: pendingDevice.id,
+          deviceName: pendingDevice.deviceName,
+          browser: pendingDevice.browser,
+          operatingSystem: pendingDevice.operatingSystem,
+          status: pendingDevice.status,
         },
-        token: session.sessionToken,
+        expiresAt: loginRequest.expiresAt.toISOString(),
+        error:
+          "Perangkat baru terdeteksi. Login dari perangkat ini membutuhkan persetujuan Administrator.",
       })
     );
+    return;
   } catch (err: any) {
     console.error("[LOGIN_ERROR]", err);
     res.statusCode = 500;

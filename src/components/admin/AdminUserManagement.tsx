@@ -23,7 +23,55 @@ import {
   Eye,
   EyeOff,
   Copy,
+  Laptop,
+  Smartphone,
+  LogOut,
+  History,
 } from "lucide-react";
+
+interface ActiveDeviceSummary {
+  id: string;
+  deviceName: string;
+  browser: string;
+  operatingSystem: string;
+  status: "ACTIVE" | "PENDING" | "REVOKED";
+  lastSeenAt: string;
+}
+
+interface AdminLoginRequestItem {
+  id: string;
+  userId: string;
+  deviceId: string;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | "CANCELLED";
+  requestedAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  rejectionReason: string | null;
+  expiresAt: string;
+  user: {
+    id: string;
+    email: string;
+    name: string | null;
+    role: "USER" | "ADMIN";
+    status: "PENDING" | "ACTIVE" | "DEACTIVATED";
+  };
+  device: {
+    id: string;
+    deviceName: string;
+    browser: string;
+    operatingSystem: string;
+    status: "ACTIVE" | "PENDING" | "REVOKED";
+    lastSeenAt: string;
+    createdAt: string;
+    revokedAt: string | null;
+  };
+  currentActiveDevice: ActiveDeviceSummary | null;
+  reviewer: {
+    id: string;
+    email: string;
+    name: string | null;
+  } | null;
+}
 
 interface ManagedUser {
   id: string;
@@ -36,6 +84,8 @@ interface ManagedUser {
   updatedAt?: string;
   documentCount: number;
   exportCount: number;
+  pendingDeviceRequests?: number;
+  activeDevice?: ActiveDeviceSummary | null;
 }
 
 type StatusFilter = "ALL" | "PENDING" | "ACTIVE" | "DEACTIVATED" | "ADMIN";
@@ -43,6 +93,8 @@ type StatusFilter = "ALL" | "PENDING" | "ACTIVE" | "DEACTIVATED" | "ADMIN";
 export const AdminUserManagement: React.FC = () => {
   const { user: currentAdmin } = useAuth();
   const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [loginRequests, setLoginRequests] = useState<AdminLoginRequestItem[]>([]);
+  const [showDeviceHistory, setShowDeviceHistory] = useState(false);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -89,11 +141,21 @@ export const AdminUserManagement: React.FC = () => {
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await safeApiFetch<{ success: boolean; users: ManagedUser[]; error?: string }>("/api/admin/users");
-      if (res.ok && res.data?.success) {
-        setUsers(res.data.users);
+      const [usersRes, reqsRes] = await Promise.all([
+        safeApiFetch<{ success: boolean; users: ManagedUser[]; error?: string }>("/api/admin/users"),
+        safeApiFetch<{ success: boolean; loginRequests: AdminLoginRequestItem[]; error?: string }>(
+          "/api/admin/login-requests"
+        ),
+      ]);
+
+      if (usersRes.ok && usersRes.data?.success) {
+        setUsers(usersRes.data.users);
       } else {
-        setErrorMessage(res.error || res.data?.error || "Gagal memuat data pengguna.");
+        setErrorMessage(usersRes.error || usersRes.data?.error || "Gagal memuat data pengguna.");
+      }
+
+      if (reqsRes.ok && reqsRes.data?.success) {
+        setLoginRequests(reqsRes.data.loginRequests);
       }
     } catch {
       setErrorMessage("Kesalahan jaringan saat memuat daftar pengguna.");
@@ -105,6 +167,104 @@ export const AdminUserManagement: React.FC = () => {
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  const pendingDeviceLoginRequests = useMemo(
+    () => loginRequests.filter((r) => r.status === "PENDING"),
+    [loginRequests]
+  );
+
+  const historyDeviceLoginRequests = useMemo(
+    () => loginRequests.filter((r) => r.status !== "PENDING"),
+    [loginRequests]
+  );
+
+  const handleApproveDeviceRequest = async (reqItem: AdminLoginRequestItem) => {
+    setActionLoading(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const res = await safeApiFetch<any>("/api/admin/login-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "APPROVE",
+          requestId: reqItem.id,
+        }),
+      });
+      if (res.ok && res.data?.success) {
+        setSuccessMessage(
+          res.data.message ||
+            `Perangkat baru (${reqItem.device.deviceName}) untuk ${reqItem.user.email} berhasil diotorisasi. Sesi perangkat lama telah dicabut.`
+        );
+        await fetchUsers();
+      } else {
+        setErrorMessage(res.error || res.data?.error || "Gagal menyetujui perangkat baru.");
+      }
+    } catch {
+      setErrorMessage("Kesalahan jaringan saat menyetujui perangkat baru.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRejectDeviceRequest = async (reqItem: AdminLoginRequestItem) => {
+    setActionLoading(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const res = await safeApiFetch<any>("/api/admin/login-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "REJECT",
+          requestId: reqItem.id,
+          rejectionReason: "Permintaan login dari perangkat baru ditolak oleh Administrator.",
+        }),
+      });
+      if (res.ok && res.data?.success) {
+        setSuccessMessage(
+          res.data.message ||
+            `Permintaan login perangkat baru (${reqItem.device.deviceName}) untuk ${reqItem.user.email} ditolak. Perangkat lama tetap aktif.`
+        );
+        await fetchUsers();
+      } else {
+        setErrorMessage(res.error || res.data?.error || "Gagal menolak permintaan perangkat.");
+      }
+    } catch {
+      setErrorMessage("Kesalahan jaringan saat menolak permintaan perangkat.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRevokeDevice = async (deviceId: string, userEmail: string, deviceName: string) => {
+    setActionLoading(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const res = await safeApiFetch<any>("/api/admin/login-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "REVOKE_DEVICE",
+          deviceId,
+        }),
+      });
+      if (res.ok && res.data?.success) {
+        setSuccessMessage(
+          res.data.message ||
+            `Perangkat aktif (${deviceName}) milik ${userEmail} telah dicabut dan sesinya dihentikan.`
+        );
+        await fetchUsers();
+      } else {
+        setErrorMessage(res.error || res.data?.error || "Gagal mencabut perangkat aktif.");
+      }
+    } catch {
+      setErrorMessage("Kesalahan jaringan saat mencabut perangkat.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const toggleRowPasswordVisibility = (userId: string) => {
     setVisiblePasswordMap((prev) => ({
@@ -475,6 +635,179 @@ export const AdminUserManagement: React.FC = () => {
         </div>
       </div>
 
+      {/* Pending Device Login Requests Queue (ONE USER = ONE ACTIVE DEVICE) */}
+      <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-5 space-y-3.5 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-blue-100 text-[#2563EB] flex items-center justify-center shrink-0">
+              <Laptop className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs sm:text-sm font-bold text-slate-900">
+                  Otorisasi Perangkat &amp; Permintaan Login Perangkat Baru (
+                  {pendingDeviceLoginRequests.length} Pending)
+                </h3>
+                <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-800 rounded-md">
+                  1 Akun = 1 Perangkat Aktif
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600">
+                Setujui (Approve) untuk mengalihkan perangkat aktif ke perangkat baru dan mencabut sesi perangkat lama, atau Tolak (Reject) untuk mempertahankan perangkat lama.
+              </p>
+            </div>
+          </div>
+
+          {historyDeviceLoginRequests.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowDeviceHistory((prev) => !prev)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer shrink-0"
+            >
+              <History className="w-3.5 h-3.5 text-slate-500" />
+              <span>
+                {showDeviceHistory
+                  ? "Sembunyikan Riwayat Perangkat"
+                  : `Riwayat Otorisasi (${historyDeviceLoginRequests.length})`}
+              </span>
+            </button>
+          )}
+        </div>
+
+        {pendingDeviceLoginRequests.length === 0 ? (
+          <div className="bg-white/90 rounded-xl border border-blue-100 px-4 py-3 text-xs text-slate-500 flex items-center justify-between">
+            <span>Tidak ada permintaan login dari perangkat baru yang menunggu persetujuan saat ini.</span>
+            <span className="text-[11px] text-emerald-700 font-semibold inline-flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Semua perangkat terpantau aman
+            </span>
+          </div>
+        ) : (
+          <div className="divide-y divide-blue-100 bg-white rounded-xl border border-blue-200 overflow-hidden">
+            {pendingDeviceLoginRequests.map((reqItem) => (
+              <div
+                key={reqItem.id}
+                className="p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4"
+              >
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900">
+                      {reqItem.user.name || "Unnamed User"}
+                    </span>
+                    <span className="text-[11px] font-mono text-slate-600">
+                      ({reqItem.user.email})
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
+                      MENUNGGU PERSETUJUAN PERANGKAT BARU
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1 text-[11px]">
+                    <div className="p-2.5 rounded-lg bg-blue-50/70 border border-blue-200/80">
+                      <span className="text-[10px] font-bold uppercase text-blue-700 block">
+                        Perangkat Baru (Meminta Login)
+                      </span>
+                      <span className="font-semibold text-slate-900 block mt-0.5">
+                        {reqItem.device.deviceName}
+                      </span>
+                      <span className="text-slate-500">
+                        Browser: {reqItem.device.browser} · OS: {reqItem.device.operatingSystem}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
+                      <span className="text-[10px] font-bold uppercase text-slate-500 block">
+                        Perangkat Aktif Saat Ini (Akan Dicabut Jika Disetujui)
+                      </span>
+                      {reqItem.currentActiveDevice ? (
+                        <>
+                          <span className="font-semibold text-slate-800 block mt-0.5">
+                            {reqItem.currentActiveDevice.deviceName}
+                          </span>
+                          <span className="text-slate-500">
+                            Aktif terakhir:{" "}
+                            {new Date(reqItem.currentActiveDevice.lastSeenAt).toLocaleString()}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-slate-500 block mt-0.5">
+                          Tidak ada perangkat aktif sebelumnya
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] text-slate-400 flex flex-wrap items-center gap-3 pt-0.5">
+                    <span>Diminta: {new Date(reqItem.requestedAt).toLocaleString()}</span>
+                    <span>·</span>
+                    <span>Kedaluwarsa: {new Date(reqItem.expiresAt).toLocaleTimeString()}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() => handleApproveDeviceRequest(reqItem)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Approve Perangkat Baru</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() => handleRejectDeviceRequest(reqItem)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Ban className="w-3.5 h-3.5" />
+                    <span>Reject</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Recent Device Authorization History */}
+        {showDeviceHistory && historyDeviceLoginRequests.length > 0 && (
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden mt-2">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-700">
+              Riwayat Permintaan Otorisasi Perangkat
+            </div>
+            <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto text-xs">
+              {historyDeviceLoginRequests.slice(0, 15).map((item) => (
+                <div
+                  key={item.id}
+                  className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                >
+                  <div>
+                    <span className="font-semibold text-slate-900">{item.user.email}</span>{" "}
+                    <span className="text-slate-500">— {item.device.deviceName}</span>
+                    <div className="text-[10px] text-slate-400">
+                      Diminta: {new Date(item.requestedAt).toLocaleString()}
+                      {item.reviewedAt &&
+                        ` · Ditinjau: ${new Date(item.reviewedAt).toLocaleString()}`}
+                    </div>
+                  </div>
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase self-start sm:self-center ${
+                      item.status === "APPROVED"
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : item.status === "REJECTED"
+                        ? "bg-rose-50 text-rose-700 border border-rose-200"
+                        : "bg-slate-100 text-slate-600 border border-slate-200"
+                    }`}
+                  >
+                    {item.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Pending Approval Queue Highlight Card */}
       {pendingUsers.length > 0 && (
         <div className="bg-amber-50/90 border border-amber-200 rounded-2xl p-5 space-y-3.5 shadow-xs">
@@ -618,6 +951,7 @@ export const AdminUserManagement: React.FC = () => {
               <tr>
                 <th className="py-3 px-4">Pengguna</th>
                 <th className="py-3 px-4">Password</th>
+                <th className="py-3 px-4">Perangkat Aktif (1 Device)</th>
                 <th className="py-3 px-4">Role Akses</th>
                 <th className="py-3 px-4">Status Otorisasi</th>
                 <th className="py-3 px-4">Dokumen / Ekspor</th>
@@ -627,14 +961,14 @@ export const AdminUserManagement: React.FC = () => {
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400">
+                  <td colSpan={7} className="py-8 text-center text-slate-400">
                     <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-slate-500" />
                     Memuat data akun pengguna...
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400">
+                  <td colSpan={7} className="py-8 text-center text-slate-400">
                     Tidak ada akun pengguna yang sesuai dengan filter.
                   </td>
                 </tr>
@@ -702,6 +1036,52 @@ export const AdminUserManagement: React.FC = () => {
                             <Key className="w-3 h-3" />
                             <span>Atur / Edit Password</span>
                           </button>
+                        )}
+                      </td>
+
+                      {/* Active Device Column */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        {u.activeDevice ? (
+                          <div className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
+                            <div>
+                              <div className="font-semibold text-[11px] text-slate-800 flex items-center gap-1">
+                                <Laptop className="w-3 h-3 text-emerald-600 shrink-0" />
+                                <span>{u.activeDevice.deviceName}</span>
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                Aktif: {new Date(u.activeDevice.lastSeenAt).toLocaleDateString()}
+                              </div>
+                            </div>
+                            {!isCurrent && (
+                              <button
+                                type="button"
+                                disabled={actionLoading}
+                                onClick={() =>
+                                  handleRevokeDevice(
+                                    u.activeDevice!.id,
+                                    u.email,
+                                    u.activeDevice!.deviceName
+                                  )
+                                }
+                                className="px-2 py-0.5 text-[10px] font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded transition-colors cursor-pointer"
+                                title="Cabut perangkat aktif & hentikan sesi"
+                              >
+                                Cabut
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 italic">
+                            Belum ada perangkat aktif
+                          </span>
+                        )}
+                        {(u.pendingDeviceRequests ?? 0) > 0 && (
+                          <div className="mt-1">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
+                              <Clock className="w-2.5 h-2.5" />
+                              {u.pendingDeviceRequests} perangkat baru menunggu
+                            </span>
+                          </div>
                         )}
                       </td>
 

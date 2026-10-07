@@ -2,6 +2,7 @@ import crypto from "crypto";
 import type { IncomingMessage } from "http";
 import { prisma } from "../db/prisma.js";
 import { AUTH_COOKIE_NAME, SESSION_MAX_AGE_SECONDS } from "./config.js";
+import { extractDeviceToken, hashDeviceToken } from "./device.js";
 import type { AuthenticatedUser, SessionInfo } from "./types.js";
 
 /**
@@ -55,7 +56,7 @@ export function hashSessionToken(rawToken: string): string {
  * Computes SHA-256 hash of the 256-bit cryptographically secure random token,
  * storing ONLY the hash in the database while returning the raw token for client cookie/bearer use.
  */
-export async function createSession(userId: string): Promise<SessionInfo> {
+export async function createSession(userId: string, deviceId?: string | null): Promise<SessionInfo> {
   const rawSessionToken = crypto.randomBytes(32).toString("hex");
   const tokenHash = hashSessionToken(rawSessionToken);
   const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000);
@@ -64,6 +65,7 @@ export async function createSession(userId: string): Promise<SessionInfo> {
     data: {
       sessionToken: tokenHash, // Store ONLY the SHA-256 hash
       userId,
+      deviceId: deviceId ?? null,
       expiresAt,
     },
     include: {
@@ -84,6 +86,7 @@ export async function createSession(userId: string): Promise<SessionInfo> {
   return {
     sessionToken: rawSessionToken, // Hand raw token to caller for secure client-side delivery
     userId: session.userId,
+    deviceId: session.deviceId,
     expiresAt: session.expiresAt,
     user,
   };
@@ -92,6 +95,7 @@ export async function createSession(userId: string): Promise<SessionInfo> {
 /**
  * Validates a session token from an incoming HTTP request against the database.
  * The client supplies the raw token, which is hashed with SHA-256 to query PostgreSQL.
+ * Also verifies that the linked device (if bound) is still ACTIVE and not revoked.
  * Returns the AuthenticatedUser if valid and active, or null if invalid, expired, or deactivated.
  */
 export async function validateRequestSession(req: IncomingMessage): Promise<AuthenticatedUser | null> {
@@ -112,7 +116,10 @@ export async function validateRequestSession(req: IncomingMessage): Promise<Auth
           { sessionToken: rawToken },
         ],
       },
-      include: { user: true },
+      include: {
+        user: true,
+        device: true,
+      },
     });
 
     if (!session) {
@@ -129,6 +136,32 @@ export async function validateRequestSession(req: IncomingMessage): Promise<Auth
     // Check user active status (must be strictly ACTIVE; PENDING and DEACTIVATED are rejected)
     if (!session.user || session.user.status !== "ACTIVE") {
       return null;
+    }
+
+    // Check device authorization if session is bound to a device
+    if (session.deviceId) {
+      if (!session.device || session.device.status !== "ACTIVE") {
+        // Device was revoked or is not active -> immediately invalidate session
+        await prisma.session.delete({ where: { id: session.id } }).catch(() => null);
+        return null;
+      }
+
+      // If request explicitly carries a device token, verify it matches the session's bound device
+      const requestDeviceToken = extractDeviceToken(req);
+      if (requestDeviceToken) {
+        const requestDeviceHash = hashDeviceToken(requestDeviceToken);
+        if (requestDeviceHash !== session.device.deviceTokenHash) {
+          return null;
+        }
+      }
+
+      // Update device lastSeenAt asynchronously
+      prisma.device
+        .update({
+          where: { id: session.device.id },
+          data: { lastSeenAt: new Date() },
+        })
+        .catch(() => null);
     }
 
     return {

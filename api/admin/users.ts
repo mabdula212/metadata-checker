@@ -42,10 +42,26 @@ export default async function adminUsersHandler(
           passwordPlain: true,
           createdAt: true,
           updatedAt: true,
+          devices: {
+            where: { status: "ACTIVE" },
+            take: 1,
+            orderBy: { lastSeenAt: "desc" },
+            select: {
+              id: true,
+              deviceName: true,
+              browser: true,
+              operatingSystem: true,
+              status: true,
+              lastSeenAt: true,
+            },
+          },
           _count: {
             select: {
               documents: true,
               exports: true,
+              loginRequests: {
+                where: { status: "PENDING" },
+              },
             },
           },
         },
@@ -55,18 +71,32 @@ export default async function adminUsersHandler(
       res.end(
         JSON.stringify({
           success: true,
-          users: users.map((u) => ({
-            id: u.id,
-            email: u.email,
-            name: u.name,
-            role: u.role,
-            status: u.status,
-            passwordPlain: u.passwordPlain || null,
-            createdAt: u.createdAt.toISOString(),
-            updatedAt: u.updatedAt.toISOString(),
-            documentCount: u._count.documents,
-            exportCount: u._count.exports,
-          })),
+          users: users.map((u) => {
+            const activeDev = u.devices[0] || null;
+            return {
+              id: u.id,
+              email: u.email,
+              name: u.name,
+              role: u.role,
+              status: u.status,
+              passwordPlain: u.passwordPlain || null,
+              createdAt: u.createdAt.toISOString(),
+              updatedAt: u.updatedAt.toISOString(),
+              documentCount: u._count.documents,
+              exportCount: u._count.exports,
+              pendingDeviceRequests: u._count.loginRequests,
+              activeDevice: activeDev
+                ? {
+                    id: activeDev.id,
+                    deviceName: activeDev.deviceName,
+                    browser: activeDev.browser,
+                    operatingSystem: activeDev.operatingSystem,
+                    status: activeDev.status,
+                    lastSeenAt: activeDev.lastSeenAt.toISOString(),
+                  }
+                : null,
+            };
+          }),
         })
       );
       return;

@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { useAuth } from "../../context/AuthContext";
+import React, { useState, useEffect } from "react";
+import { useAuth, type PendingDeviceInfo } from "../../context/AuthContext";
 import {
   Lock,
   Mail,
@@ -18,14 +18,32 @@ import {
   Layers,
   FileSpreadsheet,
   ShieldCheck,
+  Laptop,
+  Clock,
+  RefreshCw,
+  XCircle,
 } from "lucide-react";
 import { Logo } from "../ui/Logo";
 
+interface PendingDeviceApprovalState {
+  loginRequestId: string;
+  email: string;
+  device?: PendingDeviceInfo;
+  expiresAt?: string;
+  status: "PENDING" | "REJECTED" | "EXPIRED" | "CANCELLED";
+  rejectionReason?: string | null;
+}
+
 export const LoginPage: React.FC = () => {
-  const { login, register } = useAuth();
+  const { login, register, checkLoginRequestStatus, cancelLoginRequest } = useAuth();
 
   // Mode: "login" | "register"
   const [mode, setMode] = useState<"login" | "register">("login");
+
+  // Pending new-device approval state
+  const [pendingDeviceApproval, setPendingDeviceApproval] =
+    useState<PendingDeviceApprovalState | null>(null);
+  const [checkingApproval, setCheckingApproval] = useState(false);
 
   // Login fields
   const [email, setEmail] = useState("");
@@ -47,8 +65,80 @@ export const LoginPage: React.FC = () => {
 
   const switchMode = (newMode: "login" | "register") => {
     setMode(newMode);
+    setPendingDeviceApproval(null);
     setErrorMessage(null);
     setSuccessMessage(null);
+  };
+
+  // Poll every 4 seconds while waiting for Admin device approval
+  useEffect(() => {
+    if (!pendingDeviceApproval || pendingDeviceApproval.status !== "PENDING") {
+      return;
+    }
+
+    const interval = setInterval(async () => {
+      const pollRes = await checkLoginRequestStatus(pendingDeviceApproval.loginRequestId);
+      if (pollRes.success && pollRes.status && pollRes.status !== "PENDING") {
+        if (pollRes.status === "APPROVED" && pollRes.authenticated) {
+          // User is now authenticated and AuthContext will transition to workspace
+          return;
+        }
+        setPendingDeviceApproval((prev) =>
+          prev
+            ? {
+                ...prev,
+                status:
+                  pollRes.status === "REJECTED" ||
+                  pollRes.status === "EXPIRED" ||
+                  pollRes.status === "CANCELLED"
+                    ? pollRes.status
+                    : "PENDING",
+                rejectionReason: pollRes.rejectionReason,
+              }
+            : null
+        );
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [pendingDeviceApproval, checkLoginRequestStatus]);
+
+  const handleManualCheckApproval = async () => {
+    if (!pendingDeviceApproval) return;
+    setCheckingApproval(true);
+    setErrorMessage(null);
+    try {
+      const pollRes = await checkLoginRequestStatus(pendingDeviceApproval.loginRequestId);
+      if (pollRes.success && pollRes.status && pollRes.status !== "PENDING") {
+        if (pollRes.status === "APPROVED" && pollRes.authenticated) {
+          return;
+        }
+        setPendingDeviceApproval((prev) =>
+          prev
+            ? {
+                ...prev,
+                status:
+                  pollRes.status === "REJECTED" ||
+                  pollRes.status === "EXPIRED" ||
+                  pollRes.status === "CANCELLED"
+                    ? pollRes.status
+                    : "PENDING",
+                rejectionReason: pollRes.rejectionReason,
+              }
+            : null
+        );
+      }
+    } finally {
+      setCheckingApproval(false);
+    }
+  };
+
+  const handleCancelDeviceRequest = async () => {
+    if (pendingDeviceApproval?.loginRequestId) {
+      await cancelLoginRequest(pendingDeviceApproval.loginRequestId);
+    }
+    setPendingDeviceApproval(null);
+    setErrorMessage(null);
   };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
@@ -59,12 +149,24 @@ export const LoginPage: React.FC = () => {
     }
 
     setErrorMessage(null);
+    setSuccessMessage(null);
     setLoading(true);
 
     try {
       const result = await login(email, password, rememberMe);
       if (!result.success) {
-        setErrorMessage(result.error || "Invalid credentials or deactivated account.");
+        if (result.requiresDeviceApproval && result.loginRequestId) {
+          setPendingDeviceApproval({
+            loginRequestId: result.loginRequestId,
+            email,
+            device: result.device,
+            expiresAt: result.expiresAt,
+            status: "PENDING",
+          });
+          setErrorMessage(null);
+        } else {
+          setErrorMessage(result.error || "Invalid credentials or deactivated account.");
+        }
       }
     } catch {
       setErrorMessage("An unexpected authentication error occurred.");
@@ -223,6 +325,140 @@ export const LoginPage: React.FC = () => {
               </p>
             </div>
 
+        {/* Pending Device Approval Screen */}
+        {pendingDeviceApproval ? (
+          <div className="space-y-5">
+            {pendingDeviceApproval.status === "PENDING" && (
+              <div className="p-4 rounded-2xl bg-amber-50/90 border border-amber-200 space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                    <Clock className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-bold text-amber-950">
+                      Menunggu Persetujuan Administrator
+                    </h3>
+                    <p className="text-xs text-amber-900 leading-relaxed">
+                      Akun <span className="font-semibold">{pendingDeviceApproval.email}</span>{" "}
+                      terdeteksi sedang mencoba login dari perangkat baru. Sesuai kebijakan keamanan{" "}
+                      <span className="font-semibold">(1 Akun = 1 Perangkat Aktif)</span>, login dari
+                      perangkat ini membutuhkan persetujuan Administrator.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {pendingDeviceApproval.status === "REJECTED" && (
+              <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 space-y-2">
+                <div className="flex items-start gap-3">
+                  <XCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-bold text-rose-950">
+                      Permintaan Login Perangkat Baru Ditolak
+                    </h3>
+                    <p className="text-xs text-rose-800 leading-relaxed">
+                      {pendingDeviceApproval.rejectionReason ||
+                        "Administrator menolak permintaan otorisasi perangkat baru ini. Perangkat lama tetap aktif."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {pendingDeviceApproval.status === "EXPIRED" && (
+              <div className="p-4 rounded-2xl bg-slate-100 border border-slate-200 space-y-2">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-slate-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Permintaan Otorisasi Kedaluwarsa
+                    </h3>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Batas waktu persetujuan login telah berakhir. Silakan masuk kembali untuk membuat permintaan baru.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Device Details Box */}
+            {pendingDeviceApproval.device && (
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5 text-xs">
+                <div className="flex items-center justify-between text-slate-700 font-semibold border-b border-slate-200/80 pb-2">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Laptop className="w-4 h-4 text-[#2563EB]" />
+                    Informasi Perangkat Baru
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                      pendingDeviceApproval.status === "PENDING"
+                        ? "bg-amber-100 text-amber-800"
+                        : pendingDeviceApproval.status === "REJECTED"
+                        ? "bg-rose-100 text-rose-800"
+                        : "bg-slate-200 text-slate-700"
+                    }`}
+                  >
+                    {pendingDeviceApproval.status}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div>
+                    <span className="text-slate-400 block">Perangkat</span>
+                    <span className="font-semibold text-slate-800">
+                      {pendingDeviceApproval.device.deviceName}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Browser / OS</span>
+                    <span className="font-semibold text-slate-800">
+                      {pendingDeviceApproval.device.browser} ·{" "}
+                      {pendingDeviceApproval.device.operatingSystem}
+                    </span>
+                  </div>
+                </div>
+                {pendingDeviceApproval.expiresAt && pendingDeviceApproval.status === "PENDING" && (
+                  <div className="text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
+                    Berlaku hingga:{" "}
+                    <span className="font-medium text-slate-700">
+                      {new Date(pendingDeviceApproval.expiresAt).toLocaleTimeString()}
+                    </span>{" "}
+                    (Otomatis masuk saat disetujui Admin)
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-2.5 pt-1">
+              {pendingDeviceApproval.status === "PENDING" && (
+                <button
+                  type="button"
+                  onClick={handleManualCheckApproval}
+                  disabled={checkingApproval}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs sm:text-sm font-semibold rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${checkingApproval ? "animate-spin" : ""}`} />
+                  <span>
+                    {checkingApproval ? "Memeriksa Status..." : "Cek Status Persetujuan"}
+                  </span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleCancelDeviceRequest}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer"
+              >
+                <span>
+                  {pendingDeviceApproval.status === "PENDING"
+                    ? "Batalkan & Kembali ke Login"
+                    : "Kembali ke Halaman Login"}
+                </span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
         {/* Tab Switcher */}
         <div className="flex bg-slate-100 p-1 rounded-xl">
           <button
@@ -485,6 +721,8 @@ export const LoginPage: React.FC = () => {
               )}
             </button>
           </form>
+        )}
+          </>
         )}
           </div>
         </div>

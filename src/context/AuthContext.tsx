@@ -8,11 +8,40 @@ export interface UserProfile {
   status: "PENDING" | "ACTIVE" | "DEACTIVATED";
 }
 
+export interface PendingDeviceInfo {
+  id: string;
+  deviceName: string;
+  browser: string;
+  operatingSystem: string;
+  status: "PENDING" | "ACTIVE" | "REVOKED";
+}
+
+export interface LoginResponse {
+  success: boolean;
+  error?: string;
+  code?: string;
+  requiresDeviceApproval?: boolean;
+  loginRequestId?: string;
+  device?: PendingDeviceInfo;
+  expiresAt?: string;
+}
+
+export interface LoginRequestPollResult {
+  success: boolean;
+  status?: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | "CANCELLED";
+  authenticated?: boolean;
+  rejectionReason?: string | null;
+  expiresAt?: string;
+  error?: string;
+}
+
 interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
   token: string | null;
-  login: (email: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<LoginResponse>;
+  checkLoginRequestStatus: (requestId: string) => Promise<LoginRequestPollResult>;
+  cancelLoginRequest: (requestId: string) => Promise<void>;
   register: (
     name: string,
     email: string,
@@ -38,9 +67,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const refreshSession = useCallback(async () => {
     try {
       const storedToken = localStorage.getItem("mc_token");
+      const storedDeviceToken = localStorage.getItem("mc_device_token");
       const headers: Record<string, string> = {};
       if (storedToken) {
         headers["Authorization"] = `Bearer ${storedToken}`;
+      }
+      if (storedDeviceToken) {
+        headers["X-Device-Token"] = storedDeviceToken;
       }
 
       const res = await fetch("/api/auth/session", {
@@ -71,13 +104,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshSession();
   }, [refreshSession]);
 
-  const login = async (email: string, password: string, rememberMe: boolean = false) => {
+  const login = async (email: string, password: string, rememberMe: boolean = false): Promise<LoginResponse> => {
     try {
+      const storedDeviceToken = (() => {
+        try {
+          return localStorage.getItem("mc_device_token");
+        } catch {
+          return null;
+        }
+      })();
+
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (storedDeviceToken) {
+        headers["X-Device-Token"] = storedDeviceToken;
+      }
+
       const res = await fetch("/api/auth/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
-        body: JSON.stringify({ email, password, rememberMe }),
+        body: JSON.stringify({
+          email,
+          password,
+          rememberMe,
+          deviceToken: storedDeviceToken || undefined,
+        }),
       });
       const contentType = res.headers.get("content-type") || "";
       let data: any = {};
@@ -86,6 +137,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         const text = await res.text();
         return { success: false, error: `Server error (${res.status}): ${text.slice(0, 100) || "Invalid response format"}` };
+      }
+
+      if (data.deviceToken) {
+        try {
+          localStorage.setItem("mc_device_token", data.deviceToken);
+        } catch {}
       }
 
       if (res.ok && data.success && data.user) {
@@ -98,12 +155,128 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(data.user);
         return { success: true };
       }
-      return { success: false, error: data.error || "Login failed" };
+
+      if (data.requiresDeviceApproval || data.code === "DEVICE_APPROVAL_REQUIRED") {
+        return {
+          success: false,
+          code: "DEVICE_APPROVAL_REQUIRED",
+          requiresDeviceApproval: true,
+          loginRequestId: data.loginRequestId,
+          device: data.device,
+          expiresAt: data.expiresAt,
+          error:
+            data.error ||
+            "Perangkat baru terdeteksi. Login dari perangkat ini membutuhkan persetujuan Administrator.",
+        };
+      }
+
+      return {
+        success: false,
+        code: data.code,
+        error: data.error || "Login failed",
+      };
     } catch (err: any) {
       console.error("[LOGIN_FETCH_ERROR]", err);
       return { success: false, error: err?.message ? `Network error: ${err.message}` : "Network error connecting to authentication service." };
     }
   };
+
+  const checkLoginRequestStatus = useCallback(async (requestId: string): Promise<LoginRequestPollResult> => {
+    try {
+      const storedDeviceToken = (() => {
+        try {
+          return localStorage.getItem("mc_device_token");
+        } catch {
+          return null;
+        }
+      })();
+
+      const headers: Record<string, string> = {};
+      if (storedDeviceToken) {
+        headers["X-Device-Token"] = storedDeviceToken;
+      }
+
+      const res = await fetch(
+        `/api/auth/login-request?requestId=${encodeURIComponent(requestId)}`,
+        {
+          method: "GET",
+          headers,
+          credentials: "include",
+        }
+      );
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        return {
+          success: false,
+          error: errData.error || "Gagal memeriksa status persetujuan perangkat.",
+        };
+      }
+
+      const data = await res.json();
+      if (data.deviceToken) {
+        try {
+          localStorage.setItem("mc_device_token", data.deviceToken);
+        } catch {}
+      }
+
+      if (data.status === "APPROVED" && data.authenticated && data.user) {
+        if (data.token) {
+          try {
+            localStorage.setItem("mc_token", data.token);
+          } catch {}
+          setToken(data.token);
+        }
+        setUser(data.user);
+        return {
+          success: true,
+          status: "APPROVED",
+          authenticated: true,
+        };
+      }
+
+      return {
+        success: true,
+        status: data.status,
+        authenticated: false,
+        rejectionReason: data.rejectionReason,
+        expiresAt: data.expiresAt,
+      };
+    } catch {
+      return {
+        success: false,
+        error: "Kesalahan jaringan saat memeriksa status otorisasi perangkat.",
+      };
+    }
+  }, []);
+
+  const cancelLoginRequest = useCallback(async (requestId: string): Promise<void> => {
+    try {
+      const storedDeviceToken = (() => {
+        try {
+          return localStorage.getItem("mc_device_token");
+        } catch {
+          return null;
+        }
+      })();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (storedDeviceToken) {
+        headers["X-Device-Token"] = storedDeviceToken;
+      }
+      await fetch("/api/auth/login-request", {
+        method: "POST",
+        headers,
+        credentials: "include",
+        body: JSON.stringify({
+          requestId,
+          action: "CANCEL",
+          deviceToken: storedDeviceToken || undefined,
+        }),
+      });
+    } catch {
+      // Ignore cancellation errors
+    }
+  }, []);
 
   const register = async (name: string, email: string, password: string) => {
     try {
@@ -172,7 +345,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, token, login, register, logout, refreshSession }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        token,
+        login,
+        checkLoginRequestStatus,
+        cancelLoginRequest,
+        register,
+        logout,
+        refreshSession,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -57,6 +57,20 @@ enum ExportFormat {
   CSV
 }
 
+enum DeviceStatus {
+  ACTIVE
+  PENDING
+  REVOKED
+}
+
+enum LoginRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
 // ==========================================
 // MODELS
 // ==========================================
@@ -72,12 +86,15 @@ model User {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
-  documents           Document[]
-  bankAccounts        BankAccount[]
-  exports             Export[]
-  auditLogs           AuditLog[]
-  sessions            Session[]
-  passwordResetTokens PasswordResetToken[]
+  documents             Document[]
+  bankAccounts          BankAccount[]
+  exports               Export[]
+  auditLogs             AuditLog[]
+  sessions              Session[]
+  passwordResetTokens   PasswordResetToken[]
+  devices               Device[]
+  loginRequests         LoginRequest[]       @relation("UserLoginRequests")
+  reviewedLoginRequests LoginRequest[]       @relation("AdminReviewedLoginRequests")
 
   @@map("users")
 }
@@ -258,15 +275,64 @@ model Session {
   id           String   @id @default(uuid())
   sessionToken String   @unique
   userId       String
+  deviceId     String?
   expiresAt    DateTime
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device       Device?  @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
   @@index([sessionToken])
   @@index([userId])
+  @@index([deviceId])
   @@map("sessions")
+}
+
+model Device {
+  id              String         @id @default(uuid())
+  userId          String
+  deviceTokenHash String
+  deviceName      String
+  browser         String
+  operatingSystem String
+  status          DeviceStatus   @default(PENDING)
+  lastSeenAt      DateTime       @default(now())
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  revokedAt       DateTime?
+
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  loginRequests   LoginRequest[]
+  sessions        Session[]
+
+  @@unique([userId, deviceTokenHash])
+  @@index([userId])
+  @@index([deviceTokenHash])
+  @@index([status])
+  @@map("devices")
+}
+
+model LoginRequest {
+  id              String             @id @default(uuid())
+  userId          String
+  deviceId        String
+  status          LoginRequestStatus @default(PENDING)
+  requestedAt     DateTime           @default(now())
+  reviewedAt      DateTime?
+  reviewedBy      String?
+  rejectionReason String?
+  expiresAt       DateTime
+
+  user            User               @relation("UserLoginRequests", fields: [userId], references: [id], onDelete: Cascade)
+  device          Device             @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  reviewer        User?              @relation("AdminReviewedLoginRequests", fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([deviceId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("login_requests")
 }
 
 model PasswordResetToken {

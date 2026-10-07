@@ -20,8 +20,13 @@ export function sanitizeAuditMetadata(meta?: Record<string, unknown> | null): Re
   const forbiddenKeys = new Set([
     "password",
     "passwordhash",
+    "passwordplain",
     "token",
     "sessiontoken",
+    "devicetoken",
+    "devicetokenhash",
+    "mc_session",
+    "mc_device",
     "secret",
     "authsecret",
     "auth_secret",

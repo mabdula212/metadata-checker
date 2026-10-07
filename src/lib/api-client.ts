@@ -16,10 +16,14 @@ export async function safeApiFetch<T = any>(
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
   const token = typeof window !== "undefined" ? localStorage.getItem("mc_token") : null;
+  const deviceToken = typeof window !== "undefined" ? localStorage.getItem("mc_device_token") : null;
   const headers = new Headers(options.headers || {});
 
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
+  }
+  if (deviceToken && !headers.has("X-Device-Token")) {
+    headers.set("X-Device-Token", deviceToken);
   }
 
   try {
