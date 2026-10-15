@@ -163,19 +163,40 @@ export async function validateRequestSession(req: IncomingMessage): Promise<Auth
         })
         .catch(() => null);
     } else {
-      // Unbound session: if the user already has an ACTIVE authorized device,
-      // reject any unbound session that does not carry the matching device token
-      const activeDevice = await prisma.device.findFirst({
-        where: { userId: session.userId, status: "ACTIVE" },
-      });
-      if (activeDevice) {
+      // Unbound session handling:
+      if (session.user.role === "ADMIN") {
+        // Admin exception: Admins can have sessions across multiple devices.
+        // If request carries a device token, bind it to the matching active device.
         const requestDeviceToken = extractDeviceToken(req);
-        if (
-          !requestDeviceToken ||
-          hashDeviceToken(requestDeviceToken) !== activeDevice.deviceTokenHash
-        ) {
-          await prisma.session.delete({ where: { id: session.id } }).catch(() => null);
-          return null;
+        if (requestDeviceToken) {
+          const requestDeviceHash = hashDeviceToken(requestDeviceToken);
+          const matchingDev = await prisma.device.findFirst({
+            where: { userId: session.userId, deviceTokenHash: requestDeviceHash, status: "ACTIVE" },
+          });
+          if (matchingDev) {
+            await prisma.session
+              .update({
+                where: { id: session.id },
+                data: { deviceId: matchingDev.id },
+              })
+              .catch(() => null);
+          }
+        }
+      } else {
+        // For standard users: if user has an ACTIVE authorized device,
+        // reject any unbound session that does not carry the matching device token
+        const activeDevice = await prisma.device.findFirst({
+          where: { userId: session.userId, status: "ACTIVE" },
+        });
+        if (activeDevice) {
+          const requestDeviceToken = extractDeviceToken(req);
+          if (
+            !requestDeviceToken ||
+            hashDeviceToken(requestDeviceToken) !== activeDevice.deviceTokenHash
+          ) {
+            await prisma.session.delete({ where: { id: session.id } }).catch(() => null);
+            return null;
+          }
         }
       }
     }

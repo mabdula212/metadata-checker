@@ -636,5 +636,139 @@ describe("Authentication & Security Module", () => {
           .catch(() => {});
       }
     });
+
+    it("should allow ADMIN to log in on multiple different devices concurrently without revoking other sessions or requiring approval", async () => {
+      const { prisma } = await import("../lib/db/prisma.js");
+      const { default: loginHandler } = await import("../api/auth/login.js");
+      const { hashPassword, validateRequestSession } = await import(
+        "../lib/auth/index.js"
+      );
+
+      const suffix = Date.now() + 1;
+      const adminEmail = `multi_dev_admin_${suffix}@example.com`;
+      const password = "StrongAdminPass123!";
+      const passwordHash = await hashPassword(password);
+
+      const testAdmin = await prisma.user.create({
+        data: {
+          email: adminEmail,
+          name: "Multi Device Admin",
+          role: "ADMIN",
+          status: "ACTIVE",
+          passwordHash,
+        },
+      });
+
+      try {
+        // 1. Admin logs in from Device 1 (Chrome on Windows)
+        let dev1Status = 0;
+        let dev1Body = "";
+        const dev1Req: any = {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "user-agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/128.0.0.0 Safari/537.36",
+            "x-forwarded-for": `192.168.1.${suffix % 200}`,
+          },
+          body: { email: adminEmail, password },
+        };
+        const dev1Res: any = {
+          setHeader() {},
+          end(d: string) {
+            dev1Body = d;
+          },
+          set statusCode(c: number) {
+            dev1Status = c;
+          },
+          get statusCode() {
+            return dev1Status;
+          },
+        };
+
+        await loginHandler(dev1Req, dev1Res);
+        assert.strictEqual(dev1Status, 200, "Device 1 login for Admin must succeed");
+        const dev1Data = JSON.parse(dev1Body);
+        assert.strictEqual(dev1Data.success, true);
+        assert.ok(dev1Data.token);
+        assert.ok(dev1Data.deviceToken);
+
+        // 2. Admin logs in from Device 2 (Safari on macOS)
+        let dev2Status = 0;
+        let dev2Body = "";
+        const dev2Req: any = {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "user-agent":
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) Version/17.0 Safari/605.1.15",
+            "x-forwarded-for": `192.168.2.${suffix % 200}`,
+          },
+          body: { email: adminEmail, password },
+        };
+        const dev2Res: any = {
+          setHeader() {},
+          end(d: string) {
+            dev2Body = d;
+          },
+          set statusCode(c: number) {
+            dev2Status = c;
+          },
+          get statusCode() {
+            return dev2Status;
+          },
+        };
+
+        await loginHandler(dev2Req, dev2Res);
+        assert.strictEqual(
+          dev2Status,
+          200,
+          "Device 2 login for Admin must succeed immediately without requiring approval"
+        );
+        const dev2Data = JSON.parse(dev2Body);
+        assert.strictEqual(dev2Data.success, true);
+        assert.strictEqual(dev2Data.requiresDeviceApproval, undefined);
+        assert.ok(dev2Data.token);
+        assert.ok(dev2Data.deviceToken);
+
+        // 3. BOTH Device 1 and Device 2 sessions MUST remain valid and active simultaneously!
+        const validAdminDev1 = await validateRequestSession({
+          headers: {
+            authorization: `Bearer ${dev1Data.token}`,
+            "x-device-token": dev1Data.deviceToken,
+          },
+        } as any);
+        assert.strictEqual(
+          validAdminDev1?.id,
+          testAdmin.id,
+          "Admin Device 1 session must still be valid after Device 2 login"
+        );
+
+        const validAdminDev2 = await validateRequestSession({
+          headers: {
+            authorization: `Bearer ${dev2Data.token}`,
+            "x-device-token": dev2Data.deviceToken,
+          },
+        } as any);
+        assert.strictEqual(
+          validAdminDev2?.id,
+          testAdmin.id,
+          "Admin Device 2 session must also be valid"
+        );
+
+        // 4. Verify multiple active devices exist for this admin in DB
+        const adminDevices = await prisma.device.findMany({
+          where: { userId: testAdmin.id, status: "ACTIVE" },
+        });
+        assert.ok(
+          adminDevices.length >= 2,
+          "Admin must have multiple ACTIVE devices in database concurrently"
+        );
+      } finally {
+        await prisma.user
+          .deleteMany({ where: { email: adminEmail } })
+          .catch(() => {});
+      }
+    });
   });
 });

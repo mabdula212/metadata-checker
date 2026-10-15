@@ -69,6 +69,9 @@ export default async function adminUsersHandler(
             select: {
               documents: true,
               exports: true,
+              devices: {
+                where: { status: "ACTIVE" },
+              },
               loginRequests: {
                 where: { status: "PENDING" },
               },
@@ -94,6 +97,7 @@ export default async function adminUsersHandler(
               updatedAt: u.updatedAt.toISOString(),
               documentCount: u._count.documents,
               exportCount: u._count.exports,
+              activeDeviceCount: u._count.devices,
               pendingDeviceRequests: u._count.loginRequests,
               activeDevice: activeDev
                 ? {

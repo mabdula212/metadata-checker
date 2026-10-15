@@ -85,6 +85,7 @@ interface ManagedUser {
   documentCount: number;
   exportCount: number;
   pendingDeviceRequests?: number;
+  activeDeviceCount?: number;
   activeDevice?: ActiveDeviceSummary | null;
 }
 
@@ -733,11 +734,11 @@ export const AdminUserManagement: React.FC = () => {
                   {pendingDeviceLoginRequests.length} Pending)
                 </h3>
                 <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-800 rounded-md">
-                  1 Akun = 1 Perangkat Aktif
+                  1 Akun = 1 Perangkat Aktif (Kecuali Admin)
                 </span>
               </div>
               <p className="text-[11px] text-slate-600">
-                Setujui (Approve) untuk mengalihkan perangkat aktif ke perangkat baru dan mencabut sesi perangkat lama, atau Tolak (Reject) untuk mempertahankan perangkat lama.
+                Aturan 1 perangkat aktif berlaku untuk akun standar (USER). Akun Administrator (ADMIN) memiliki pengecualian dan dapat login di berbagai perangkat secara bersamaan.
               </p>
             </div>
           </div>
@@ -1085,7 +1086,7 @@ export const AdminUserManagement: React.FC = () => {
                 </th>
                 <th className="py-3 px-4">Pengguna</th>
                 <th className="py-3 px-4">Password</th>
-                <th className="py-3 px-4">Perangkat Aktif (1 Device)</th>
+                <th className="py-3 px-4">Perangkat Aktif (1 Device / Multi-Admin)</th>
                 <th className="py-3 px-4">Role Akses</th>
                 <th className="py-3 px-4">Status Otorisasi</th>
                 <th className="py-3 px-4">Dokumen / Ekspor</th>
@@ -1195,7 +1196,24 @@ export const AdminUserManagement: React.FC = () => {
 
                       {/* Active Device Column */}
                       <td className="py-3 px-4 whitespace-nowrap">
-                        {u.activeDevice ? (
+                        {isAdmin ? (
+                          <div className="flex items-center justify-between gap-2 bg-purple-50/70 border border-purple-200/80 rounded-lg px-2.5 py-1.5">
+                            <div>
+                              <div className="font-semibold text-[11px] text-purple-900 flex items-center gap-1">
+                                <Laptop className="w-3 h-3 text-purple-600 shrink-0" />
+                                <span>{u.activeDevice ? u.activeDevice.deviceName : "Multi-Perangkat"}</span>
+                                {(u.activeDeviceCount ?? 0) > 1 && (
+                                  <span className="px-1.5 py-0.2 text-[9px] font-bold bg-purple-200 text-purple-800 rounded">
+                                    {u.activeDeviceCount} aktif
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-purple-700/80">
+                                Pengecualian: Multi-perangkat aktif
+                              </div>
+                            </div>
+                          </div>
+                        ) : u.activeDevice ? (
                           <div className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
                             <div>
                               <div className="font-semibold text-[11px] text-slate-800 flex items-center gap-1">

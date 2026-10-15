@@ -65,11 +65,8 @@ export default async function sessionHandler(
     const rawDeviceToken = existingRawDeviceToken || generateDeviceToken();
     const deviceTokenHash = hashDeviceToken(rawDeviceToken);
 
-    const activeDevice = await prisma.device.findFirst({
-      where: { userId: user.id, status: "ACTIVE" },
-    });
-
-    if (!activeDevice) {
+    if (user.role === "ADMIN") {
+      // For Admin: ensure current device is recognized and active, without revoking other admin devices or sessions
       const { deviceName, browser, operatingSystem } = parseDeviceMetadata(
         req.headers["user-agent"]
       );
@@ -102,19 +99,69 @@ export default async function sessionHandler(
 
       if (rawSessionToken) {
         const sessionTokenHash = hashSessionToken(rawSessionToken);
-        const currentSession = await prisma.session.findFirst({
+        await prisma.session
+          .updateMany({
+            where: {
+              userId: user.id,
+              OR: [{ sessionToken: sessionTokenHash }, { sessionToken: rawSessionToken }],
+              deviceId: null,
+            },
+            data: { deviceId: boundDevice.id },
+          })
+          .catch(() => null);
+      }
+    } else {
+      const activeDevice = await prisma.device.findFirst({
+        where: { userId: user.id, status: "ACTIVE" },
+      });
+
+      if (!activeDevice) {
+        const { deviceName, browser, operatingSystem } = parseDeviceMetadata(
+          req.headers["user-agent"]
+        );
+        const now = new Date();
+        const boundDevice = await prisma.device.upsert({
           where: {
-            OR: [{ sessionToken: sessionTokenHash }, { sessionToken: rawSessionToken }],
+            userId_deviceTokenHash: {
+              userId: user.id,
+              deviceTokenHash,
+            },
+          },
+          update: {
+            status: "ACTIVE",
+            deviceName,
+            browser,
+            operatingSystem,
+            lastSeenAt: now,
+            revokedAt: null,
+          },
+          create: {
+            userId: user.id,
+            deviceTokenHash,
+            deviceName,
+            browser,
+            operatingSystem,
+            status: "ACTIVE",
+            lastSeenAt: now,
           },
         });
-        if (currentSession) {
-          await prisma.session.update({
-            where: { id: currentSession.id },
-            data: { deviceId: boundDevice.id },
+
+        if (rawSessionToken) {
+          const sessionTokenHash = hashSessionToken(rawSessionToken);
+          const currentSession = await prisma.session.findFirst({
+            where: {
+              OR: [{ sessionToken: sessionTokenHash }, { sessionToken: rawSessionToken }],
+            },
           });
-          await prisma.session.deleteMany({
-            where: { userId: user.id, id: { not: currentSession.id } },
-          });
+          if (currentSession) {
+            await prisma.session.update({
+              where: { id: currentSession.id },
+              data: { deviceId: boundDevice.id },
+            });
+            await prisma.session.deleteMany({
+              where: { userId: user.id, id: { not: currentSession.id } },
+            });
+          }
         }
       }
     }

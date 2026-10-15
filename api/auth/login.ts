@@ -224,13 +224,97 @@ export default async function loginHandler(
     });
 
     const matchingDevice = allUserDevices.find((d) => d.deviceTokenHash === deviceTokenHash);
-    const activeDevices = allUserDevices.filter((d) => d.status === "ACTIVE");
+    const isAdmin = user.role === "ADMIN";
 
-    // Case 1: Current device is already ACTIVE and authorized
-    // Case 2: User has never registered any device yet (first-ever login) or Admin has 0 active devices
+    // -------------------------------------------------------------------------
+    // EXCEPTION FOR ADMIN:
+    // Admin accounts can log in from ANY device without requiring approval,
+    // and can have multiple concurrent active devices and sessions without
+    // revoking previous devices or terminating other active sessions.
+    // -------------------------------------------------------------------------
+    if (isAdmin) {
+      const now = new Date();
+      let authorizedDevice = matchingDevice;
+
+      if (authorizedDevice) {
+        authorizedDevice = await prisma.device.update({
+          where: { id: authorizedDevice.id },
+          data: {
+            status: "ACTIVE",
+            deviceName,
+            browser,
+            operatingSystem,
+            lastSeenAt: now,
+            revokedAt: null,
+          },
+        });
+      } else {
+        authorizedDevice = await prisma.device.create({
+          data: {
+            userId: user.id,
+            deviceTokenHash,
+            deviceName,
+            browser,
+            operatingSystem,
+            status: "ACTIVE",
+            lastSeenAt: now,
+          },
+        });
+      }
+
+      // Create persistent server session bound to this device for the Admin
+      // (Do NOT revoke other devices or delete other sessions for Admin!)
+      const session = await createSession(user.id, authorizedDevice.id);
+
+      // Set HttpOnly session cookie + persistent HttpOnly device cookie
+      const maxAge = rememberMe ? 30 * 24 * 60 * 60 : undefined;
+      res.setHeader("Set-Cookie", [
+        buildSessionCookie(session.sessionToken, maxAge),
+        buildDeviceCookie(rawDeviceToken),
+      ]);
+
+      // Audit log successful admin login
+      await logAuditEvent({
+        userId: user.id,
+        action: "LOGIN",
+        entityType: "USER",
+        entityId: user.id,
+        metadata: {
+          email: user.email,
+          role: user.role,
+          deviceId: authorizedDevice.id,
+          deviceName: authorizedDevice.deviceName,
+          browser: authorizedDevice.browser,
+          operatingSystem: authorizedDevice.operatingSystem,
+          multiDeviceAdmin: true,
+        },
+      });
+
+      res.statusCode = 200;
+      res.end(
+        JSON.stringify({
+          success: true,
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            status: user.status,
+          },
+          token: session.sessionToken,
+          deviceToken: rawDeviceToken,
+        })
+      );
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // STANDARD USER (NON-ADMIN):
+    // Strictly enforce 1 Account = 1 Active Device and require Admin Approval
+    // for any new/unrecognized device.
+    // -------------------------------------------------------------------------
     const isAuthorizedActiveDevice = matchingDevice && matchingDevice.status === "ACTIVE";
-    const isFirstDeviceEver =
-      allUserDevices.length === 0 || (user.role === "ADMIN" && activeDevices.length === 0);
+    const isFirstDeviceEver = allUserDevices.length === 0;
 
     if (isAuthorizedActiveDevice || isFirstDeviceEver) {
       const now = new Date();
@@ -262,7 +346,7 @@ export default async function loginHandler(
         });
       }
 
-      // Enforce strictly ONE active device and ONE active session for this user
+      // Enforce strictly ONE active device and ONE active session for standard user
       await prisma.device.updateMany({
         where: {
           userId: user.id,
