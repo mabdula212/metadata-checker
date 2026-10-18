@@ -5,6 +5,7 @@ import {
   buildClearSessionCookie,
   logAuditEvent,
   validateRequestSession,
+  verifyCsrf,
 } from "../../lib/auth/index.js";
 
 /**
@@ -20,6 +21,13 @@ export default async function logoutHandler(
   if (req.method !== "POST") {
     res.statusCode = 405;
     res.end(JSON.stringify({ success: false, error: "Method not allowed. Use POST." }));
+    return;
+  }
+
+  // CSRF verification on state-changing logout
+  if (!verifyCsrf(req)) {
+    res.statusCode = 403;
+    res.end(JSON.stringify({ success: false, error: "Cross-Site Request Forgery (CSRF) verification failed." }));
     return;
   }
 

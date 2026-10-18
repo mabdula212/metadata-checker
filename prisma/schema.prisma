@@ -109,6 +109,10 @@ model Document {
   storageKey       String
   status           DocumentStatus  @default(UPLOADED)
   documentType     DocumentType    @default(UNKNOWN)
+  processingDuration Int?
+  lastAccessedAt   DateTime?
+  analysisVersion  String?
+  deletedAt        DateTime?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
@@ -121,6 +125,10 @@ model Document {
   @@index([userId])
   @@index([status])
   @@index([createdAt])
+  @@index([deletedAt])
+  @@index([userId, createdAt])
+  @@index([userId, status])
+  @@index([userId, documentType])
   @@map("documents")
 }
 

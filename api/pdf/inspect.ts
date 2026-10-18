@@ -21,7 +21,8 @@ import {
   runBankDetectionOnDocument,
   runTransactionExtractionOnDocument,
 } from "../../lib/db/documents.js";
-import { requireAuth, logAuditEvent } from "../../lib/auth/index.js";
+import { prisma } from "../../lib/db/prisma.js";
+import { requireAuth, logAuditEvent, checkRateLimit } from "../../lib/auth/index.js";
 import { assertStorageConfigured } from "../../lib/storage/index.js";
 import {
   normalizeAnalysisOptions,
@@ -207,6 +208,7 @@ async function parseRequestPayload(req: IncomingMessage): Promise<ParsedUpload> 
  * Compatible with Node.js and Vercel serverless function invocation.
  */
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  const startTime = Date.now();
   res.setHeader("Content-Type", "application/json");
 
   // Only allow POST
@@ -219,6 +221,22 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   // Require active authentication
   const authUser = await requireAuth(req, res);
   if (!authUser) return;
+
+  // Rate limiting: 30 PDF inspect/upload requests per minute per user/IP
+  const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || "unknown";
+  const rateLimitKey = `pdf-inspect:${authUser.id}:${clientIp}`;
+  const rateCheck = checkRateLimit(rateLimitKey, 30, 60 * 1000);
+  if (!rateCheck.allowed) {
+    res.statusCode = 429;
+    res.setHeader("Retry-After", rateCheck.retryAfterSeconds.toString());
+    res.end(
+      JSON.stringify({
+        success: false,
+        error: `Rate limit exceeded. Please wait ${rateCheck.retryAfterSeconds} seconds before uploading another document.`,
+      })
+    );
+    return;
+  }
 
   // Validate storage configuration before document processing
   try {
@@ -487,6 +505,19 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         executionPlan: selectedFeatures,
       },
     });
+
+    // Update processingDuration, analysisVersion, and lastAccessedAt
+    const processingDuration = Math.max(1, Date.now() - startTime);
+    await prisma.document
+      .update({
+        where: { id: result.document.id },
+        data: {
+          processingDuration,
+          analysisVersion: "1.2",
+          lastAccessedAt: new Date(),
+        },
+      })
+      .catch(() => null);
 
     // 8. Deliver unified response with independent engine results (Instruction 8 & 9)
     res.statusCode = 200;

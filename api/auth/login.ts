@@ -16,6 +16,8 @@ import {
   resetRateLimit,
   logAuditEvent,
   ensureDefaultAdminExists,
+  verifyCsrf,
+  sanitizeClientErrorMessage,
 } from "../../lib/auth/index.js";
 
 /**
@@ -32,6 +34,13 @@ export default async function loginHandler(
   if (req.method !== "POST") {
     res.statusCode = 405;
     res.end(JSON.stringify({ success: false, error: "Method not allowed. Use POST." }));
+    return;
+  }
+
+  // CSRF verification on state-changing request
+  if (!verifyCsrf(req)) {
+    res.statusCode = 403;
+    res.end(JSON.stringify({ success: false, error: "Cross-Site Request Forgery (CSRF) verification failed." }));
     return;
   }
 
@@ -497,18 +506,12 @@ export default async function loginHandler(
     );
     return;
   } catch (err: any) {
-    console.error("[LOGIN_ERROR]", err);
+    console.error("[LOGIN_ERROR]", err instanceof Error ? err.message : String(err));
     res.statusCode = 500;
-    const errMsg = String(err?.message || err || "");
-    let userMsg = "An unexpected error occurred during login.";
-
-    if (errMsg.includes("DATABASE_URL") || errMsg.includes("Environment variable not found")) {
-      userMsg = "Database connection error: DATABASE_URL environment variable is missing on Vercel/server.";
-    } else if (errMsg.includes("connect ECONNREFUSED") || errMsg.includes("Can't reach database server")) {
-      userMsg = "Cannot reach database server. Please check your DATABASE_URL credentials.";
-    } else if (errMsg.includes("did not initialize yet")) {
-      userMsg = "Prisma Client is not initialized. Build generation required.";
-    }
+    const isProd = process.env.NODE_ENV === "production";
+    const userMsg = isProd
+      ? "An unexpected error occurred during login. Please try again later."
+      : sanitizeClientErrorMessage(err, "An unexpected error occurred during login.");
 
     res.end(JSON.stringify({ success: false, error: userMsg }));
   }

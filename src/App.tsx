@@ -67,6 +67,8 @@ import { CookieConsentBanner } from "./components/CookieConsentBanner";
 import { Footer } from "./components/layout/Footer";
 import { AboutPage } from "./components/AboutPage";
 import { Logo } from "./components/ui/Logo";
+import { DashboardView } from "./components/dashboard/DashboardView";
+import { DocumentHistoryView } from "./components/documents/DocumentHistoryView";
 
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
 
@@ -888,6 +890,92 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
     }
   };
 
+  const handleOpenDocument = async (documentId: string) => {
+    try {
+      const res = await safeApiFetch<any>(`/api/documents/${documentId}`);
+      if (res.ok && res.data?.success && res.data.data) {
+        const doc = res.data.data;
+        setActiveResult({
+          document: doc,
+          metadata: doc.metadata || null,
+          isDuplicate: false,
+        });
+
+        if (doc.statement) {
+          setBankDetectionResult({
+            documentType: doc.documentType || "BANK_STATEMENT",
+            bankCode: doc.statement.bankName,
+            bankName: doc.statement.bankName,
+            confidence: "HIGH",
+            matchedSignals: ["Historical Ledger Analysis"],
+            statementPeriodStart: doc.statement.statementPeriodStart
+              ? new Date(doc.statement.statementPeriodStart).toISOString()
+              : null,
+            statementPeriodEnd: doc.statement.statementPeriodEnd
+              ? new Date(doc.statement.statementPeriodEnd).toISOString()
+              : null,
+            accountNumberMasked: doc.statement.accountNumberMasked,
+            accountHolderName: doc.statement.accountHolderName,
+            isScannedOrImageOnly: false,
+          });
+
+          if (doc.statement.transactions && doc.statement.transactions.length > 0) {
+            const rawMeta = doc.metadata?.rawMetadataJson as any;
+            setTransactionExtractionResult({
+              documentId: doc.id,
+              statementId: doc.statement.id,
+              status: rawMeta?.extractionStatus || "COMPLETED",
+              summary: {
+                totalRowsDetected: doc.statement.transactions.length,
+                totalTransactionsParsed: doc.statement.transactions.length,
+                totalTransactionsRejected: 0,
+                totalTransactionsNeedingReview: 0,
+                totalCredit: doc.statement.totalCredit ? String(doc.statement.totalCredit) : "0",
+                totalDebit: doc.statement.totalDebit ? String(doc.statement.totalDebit) : "0",
+                openingBalance: doc.statement.openingBalance ? String(doc.statement.openingBalance) : null,
+                closingBalance: doc.statement.closingBalance ? String(doc.statement.closingBalance) : null,
+                balanceReconciliationStatus:
+                  rawMeta?.balanceReconciliationStatus === "BALANCED" ||
+                  rawMeta?.balanceReconciliationStatus === "DISCREPANCY"
+                    ? (rawMeta.balanceReconciliationStatus === "BALANCED" ? "VALID" : "NEEDS_REVIEW")
+                    : "VALID",
+              },
+              transactions: doc.statement.transactions.map((tx: any) => ({
+                transactionDate: tx.transactionDate
+                  ? new Date(tx.transactionDate).toISOString().split("T")[0]
+                  : "",
+                description: tx.description,
+                referenceNumber: tx.referenceNumber || null,
+                debit: tx.debit != null ? String(tx.debit) : null,
+                credit: tx.credit != null ? String(tx.credit) : null,
+                balance: String(tx.balance),
+                category: tx.category || null,
+                transactionType: tx.transactionType || "OTHER",
+                confidence: "HIGH",
+              })),
+              reviewRows: rawMeta?.reviewRows || [],
+              validation: rawMeta?.extractionValidation,
+              warning: rawMeta?.extractionWarnings?.[0],
+            });
+          } else {
+            setTransactionExtractionResult(null);
+          }
+        } else {
+          setBankDetectionResult(null);
+          setTransactionExtractionResult(null);
+        }
+
+        setProcessingStage("COMPLETED");
+        setActiveTab("analyze");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } else {
+        alert(res.data?.error || "Gagal membuka dokumen.");
+      }
+    } catch {
+      alert("Terjadi kesalahan saat membuka dokumen.");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased">
       {/* GLOBAL APPLICATION SHELL HEADER */}
@@ -937,7 +1025,7 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
                     : "text-[#64748B] hover:text-[#0F172A] hover:bg-slate-50"
                 }`}
               >
-                Recent Files
+                Document History
               </button>
               <button
                 type="button"
@@ -1044,7 +1132,7 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
               }}
               className="w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100"
             >
-              Recent Files
+              Document History
             </button>
             <button
               type="button"
@@ -1105,47 +1193,13 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
         )}
 
         {/* ============================================================== */}
-        {/* VIEW 2: RECENT FILES DEDICATED PAGE */}
+        {/* VIEW 2: DOCUMENT HISTORY DEDICATED PAGE */}
         {/* ============================================================== */}
         {activeTab === "recent" && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
-                  Recent Files
-                </h1>
-                <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                  Access your previously analyzed PDF statements and historical reports.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={fetchRecentFiles}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${loadingRecent ? "animate-spin" : ""}`} />
-                  Refresh
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("analyze")}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors cursor-pointer"
-                >
-                  <UploadCloud className="w-3.5 h-3.5" />
-                  Analyze New PDF
-                </button>
-              </div>
-            </div>
-
-            <RecentFilesTable
-              documents={recentFiles}
-              loading={loadingRecent}
-              onSelectDocument={handleSelectRecentDoc}
-              onAnalyzeNew={() => setActiveTab("analyze")}
-            />
-          </div>
+          <DocumentHistoryView
+            onOpenDocument={handleOpenDocument}
+            onNavigateAnalyze={() => setActiveTab("analyze")}
+          />
         )}
 
         {/* ============================================================== */}
@@ -1235,43 +1289,13 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
         {/* ============================================================== */}
         {activeTab === "dashboard" && (
           <div className="space-y-12 animate-in fade-in duration-200">
-            {/* HERO SECTION */}
-            <section className="text-center max-w-3xl mx-auto space-y-5 pt-4 sm:pt-6">
-              <div className="flex justify-center">
-                <Logo variant="full" size="md" showTagline={true} />
-              </div>
-
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[#0F172A]">
-                Analyze Financial Documents <span className="text-[#2563EB]">Smarter.</span>
-              </h1>
-              <p className="text-sm sm:text-base lg:text-lg text-[#64748B] max-w-2xl mx-auto leading-relaxed">
-                Extract metadata, detect banks, analyze transactions, validate balances, and export structured financial data from PDF documents.
-              </p>
-              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("analyze")}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-sm font-semibold shadow-xs transition-colors cursor-pointer"
-                >
-                  <span>Analyze PDF</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("about")}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-[#0F172A] border border-[#E2E8F0] text-sm font-semibold shadow-xs transition-colors cursor-pointer"
-                >
-                  <span>Learn More</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("recent")}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[#64748B] hover:text-[#0F172A] text-sm font-semibold transition-colors cursor-pointer"
-                >
-                  <span>View Recent Files</span>
-                </button>
-              </div>
-            </section>
+            {/* INTERACTIVE DASHBOARD VIEW */}
+            <DashboardView
+              user={user}
+              onNavigateAnalyze={() => setActiveTab("analyze")}
+              onNavigateHistory={() => setActiveTab("recent")}
+              onOpenDocument={handleOpenDocument}
+            />
 
             {/* WORKFLOW EXPLANATION: 01 to 05 */}
             <section className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">

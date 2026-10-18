@@ -85,11 +85,15 @@ export async function getOrCreateSystemUser() {
 
 /**
  * Checks if a file with the given SHA-256 hash has already been processed.
+ * If userId is provided, strictly restricts lookup to documents owned by that user (User Data Isolation).
  * If found, returns the existing document and its metadata.
  */
-export async function findDuplicateDocument(fileHash: string) {
+export async function findDuplicateDocument(fileHash: string, userId?: string) {
   const existingMetadata = await prisma.documentMetadata.findFirst({
-    where: { fileHash },
+    where: {
+      fileHash,
+      ...(userId ? { document: { userId } } : {}),
+    },
     include: {
       document: true,
     },
@@ -160,8 +164,8 @@ export async function processAndSaveDocument(
   const { fileHash } = extractedMetadata;
   const stableBuffer = createStableBufferCopy(options.buffer);
 
-  // 1. Check for duplicates using SHA-256
-  const existing = await findDuplicateDocument(fileHash);
+  // 1. Check for duplicates using SHA-256 (scoped to user for data isolation)
+  const existing = await findDuplicateDocument(fileHash, options.userId);
   if (existing) {
     const provider = getStorageProvider();
     const exists = await provider.exists(existing.document.storageKey).catch(() => false);
@@ -957,9 +961,13 @@ export async function getTransactionsForDocument(documentId: string) {
 /**
  * Retrieves the list of recently analyzed documents and their metadata.
  * If userId is provided, filters strictly for documents owned by that user.
+ * Excludes soft-deleted documents.
  */
 export async function getRecentDocuments(limit = 10, userId?: string) {
-  const whereClause = userId ? { userId } : {};
+  const whereClause: Prisma.DocumentWhereInput = {
+    deletedAt: null,
+    ...(userId ? { userId } : {}),
+  };
 
   return await prisma.document.findMany({
     where: whereClause,
@@ -974,4 +982,383 @@ export async function getRecentDocuments(limit = 10, userId?: string) {
       },
     },
   });
+}
+
+function formatBytesHelper(bytes: number, decimals = 2): string {
+  if (bytes === 0) return "0 Bytes";
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ["Bytes", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
+}
+
+export interface DashboardResponseData {
+  stats: {
+    documentsAnalyzed: number;
+    transactionsExtracted: number;
+    needsReview: number;
+    storageUsed: {
+      bytes: number;
+      formatted: string;
+    };
+  };
+  recentDocuments: Array<{
+    id: string;
+    filename: string;
+    bank: string;
+    period: {
+      start: string | null;
+      end: string | null;
+    } | null;
+    transactionCount: number;
+    status: string;
+    createdDate: string;
+    processingDuration: number | null;
+    lastAccessedAt: string | null;
+  }>;
+  bankDistribution: Array<{
+    bank: string;
+    count: number;
+    percentage: number;
+  }>;
+}
+
+/**
+ * Retrieves aggregated dashboard statistics for an authenticated user.
+ * Enforces strict user data isolation and excludes deleted documents.
+ */
+export async function getDashboardData(userId: string): Promise<DashboardResponseData> {
+  const [totalDocs, statementAgg, storageAgg, failedCount, recentDocs, bankStatements] = await Promise.all([
+    prisma.document.count({
+      where: { userId, deletedAt: null },
+    }),
+    prisma.statement.aggregate({
+      where: {
+        document: { userId, deletedAt: null },
+      },
+      _sum: {
+        transactionCount: true,
+      },
+    }),
+    prisma.document.aggregate({
+      where: { userId, deletedAt: null },
+      _sum: {
+        fileSize: true,
+      },
+    }),
+    prisma.document.count({
+      where: {
+        userId,
+        deletedAt: null,
+        status: { in: ["FAILED", "UPLOADED"] },
+      },
+    }),
+    prisma.document.findMany({
+      where: { userId, deletedAt: null },
+      take: 6,
+      orderBy: { createdAt: "desc" },
+      include: {
+        metadata: true,
+        statement: true,
+      },
+    }),
+    prisma.statement.findMany({
+      where: {
+        document: { userId, deletedAt: null },
+      },
+      select: {
+        bankName: true,
+        document: {
+          select: {
+            metadata: {
+              select: {
+                rawMetadataJson: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  let reviewCount = failedCount;
+  const bankCounts: Record<string, number> = {};
+
+  for (const s of bankStatements) {
+    const bank = s.bankName || "Unknown Bank";
+    bankCounts[bank] = (bankCounts[bank] || 0) + 1;
+
+    const rawMeta = s.document?.metadata?.rawMetadataJson as any;
+    if (
+      rawMeta?.extractionStatus === "NEEDS_REVIEW" ||
+      rawMeta?.balanceReconciliationStatus === "DISCREPANCY" ||
+      (typeof rawMeta?.extractionValidation?.totalTransactionsNeedingReview === "number" &&
+        rawMeta.extractionValidation.totalTransactionsNeedingReview > 0)
+    ) {
+      reviewCount++;
+    }
+  }
+
+  const totalBankCount = bankStatements.length || 1;
+  const bankDistribution = Object.entries(bankCounts).map(([bank, count]) => ({
+    bank,
+    count,
+    percentage: Math.round((count / totalBankCount) * 100),
+  }));
+
+  const totalBytes = storageAgg._sum.fileSize || 0;
+
+  return {
+    stats: {
+      documentsAnalyzed: totalDocs,
+      transactionsExtracted: statementAgg._sum.transactionCount || 0,
+      needsReview: reviewCount,
+      storageUsed: {
+        bytes: totalBytes,
+        formatted: formatBytesHelper(totalBytes),
+      },
+    },
+    recentDocuments: recentDocs.map((doc) => ({
+      id: doc.id,
+      filename: doc.originalFileName,
+      bank: doc.statement?.bankName || "Unknown Bank",
+      period:
+        doc.statement?.statementPeriodStart || doc.statement?.statementPeriodEnd
+          ? {
+              start: doc.statement.statementPeriodStart?.toISOString() || null,
+              end: doc.statement.statementPeriodEnd?.toISOString() || null,
+            }
+          : null,
+      transactionCount: doc.statement?.transactionCount || 0,
+      status: doc.status,
+      createdDate: doc.createdAt.toISOString(),
+      processingDuration: doc.processingDuration,
+      lastAccessedAt: doc.lastAccessedAt ? doc.lastAccessedAt.toISOString() : null,
+    })),
+    bankDistribution,
+  };
+}
+
+export interface DocumentHistoryFilterOptions {
+  userId: string;
+  search?: string;
+  bank?: string;
+  status?: string;
+  startDate?: string | Date;
+  endDate?: string | Date;
+  page?: number;
+  limit?: number;
+  sortBy?: "createdAt" | "originalFileName" | "fileSize" | "transactionCount";
+  sortOrder?: "asc" | "desc";
+}
+
+/**
+ * Retrieves paginated document history with search, bank, status, and date filters.
+ * Enforces ownership and data isolation.
+ */
+export async function getDocumentHistory(options: DocumentHistoryFilterOptions) {
+  const {
+    userId,
+    search,
+    bank,
+    status,
+    startDate,
+    endDate,
+    page = 1,
+    limit = 10,
+    sortBy = "createdAt",
+    sortOrder = "desc",
+  } = options;
+
+  const safePage = Math.max(1, page);
+  const safeLimit = Math.min(50, Math.max(1, limit));
+  const skip = (safePage - 1) * safeLimit;
+
+  const where: Prisma.DocumentWhereInput = {
+    userId,
+    deletedAt: null,
+  };
+
+  if (search && search.trim().length > 0) {
+    const q = search.trim();
+    where.OR = [
+      { originalFileName: { contains: q, mode: "insensitive" } },
+      { statement: { bankName: { contains: q, mode: "insensitive" } } },
+      { metadata: { title: { contains: q, mode: "insensitive" } } },
+    ];
+  }
+
+  if (bank && bank !== "ALL" && bank.trim().length > 0) {
+    where.statement = {
+      bankName: { equals: bank.trim(), mode: "insensitive" },
+    };
+  }
+
+  if (status && status !== "ALL" && status.trim().length > 0) {
+    where.status = status as any;
+  }
+
+  if (startDate || endDate) {
+    const dateFilter: Prisma.DateTimeFilter = {};
+    if (startDate) {
+      const s = new Date(startDate);
+      if (!isNaN(s.getTime())) dateFilter.gte = s;
+    }
+    if (endDate) {
+      const e = new Date(endDate);
+      if (!isNaN(e.getTime())) {
+        e.setHours(23, 59, 59, 999);
+        dateFilter.lte = e;
+      }
+    }
+    if (dateFilter.gte || dateFilter.lte) {
+      where.createdAt = dateFilter;
+    }
+  }
+
+  let orderByClause: Prisma.DocumentOrderByWithRelationInput = { createdAt: sortOrder };
+  if (sortBy === "originalFileName") {
+    orderByClause = { originalFileName: sortOrder };
+  } else if (sortBy === "fileSize") {
+    orderByClause = { fileSize: sortOrder };
+  }
+
+  const [total, documents] = await Promise.all([
+    prisma.document.count({ where }),
+    prisma.document.findMany({
+      where,
+      skip,
+      take: safeLimit,
+      orderBy: orderByClause,
+      include: {
+        metadata: true,
+        statement: true,
+        processingJobs: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+        exports: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+      },
+    }),
+  ]);
+
+  const totalPages = Math.ceil(total / safeLimit) || 1;
+
+  return {
+    data: documents.map((doc) => ({
+      id: doc.id,
+      originalFileName: doc.originalFileName,
+      fileSize: doc.fileSize,
+      mimeType: doc.mimeType,
+      status: doc.status,
+      documentType: doc.documentType,
+      processingDuration: doc.processingDuration,
+      lastAccessedAt: doc.lastAccessedAt ? doc.lastAccessedAt.toISOString() : null,
+      analysisVersion: doc.analysisVersion,
+      createdAt: doc.createdAt.toISOString(),
+      updatedAt: doc.updatedAt.toISOString(),
+      bankName: doc.statement?.bankName || null,
+      accountNumberMasked: doc.statement?.accountNumberMasked || null,
+      accountHolderName: doc.statement?.accountHolderName || null,
+      statementPeriodStart: doc.statement?.statementPeriodStart
+        ? doc.statement.statementPeriodStart.toISOString()
+        : null,
+      statementPeriodEnd: doc.statement?.statementPeriodEnd
+        ? doc.statement.statementPeriodEnd.toISOString()
+        : null,
+      transactionCount: doc.statement?.transactionCount || 0,
+      totalCredit: doc.statement?.totalCredit ? Number(doc.statement.totalCredit) : null,
+      totalDebit: doc.statement?.totalDebit ? Number(doc.statement.totalDebit) : null,
+      hasExport: doc.exports.length > 0,
+    })),
+    pagination: {
+      total,
+      page: safePage,
+      limit: safeLimit,
+      totalPages,
+      hasNextPage: safePage < totalPages,
+      hasPrevPage: safePage > 1,
+    },
+  };
+}
+
+/**
+ * Retrieves full document details, metadata, statement, and transactions.
+ * Enforces ownership and updates lastAccessedAt.
+ */
+export async function getDocumentDetail(
+  documentId: string,
+  userId: string,
+  isAdmin = false
+) {
+  const document = await prisma.document.findUnique({
+    where: { id: documentId },
+    include: {
+      metadata: true,
+      statement: {
+        include: {
+          transactions: {
+            orderBy: { transactionDate: "asc" },
+          },
+        },
+      },
+      exports: {
+        orderBy: { createdAt: "desc" },
+      },
+      processingJobs: {
+        orderBy: { createdAt: "desc" },
+      },
+    },
+  });
+
+  if (!document || document.deletedAt !== null) {
+    return { status: 404, error: "Document not found or has been deleted." };
+  }
+
+  if (!isAdmin && document.userId !== userId) {
+    return { status: 403, error: "Access denied. You do not own this document." };
+  }
+
+  // Update lastAccessedAt timestamp in background
+  prisma.document
+    .update({
+      where: { id: documentId },
+      data: { lastAccessedAt: new Date() },
+    })
+    .catch(() => null);
+
+  return { status: 200, data: document };
+}
+
+/**
+ * Soft deletes a document by updating deletedAt.
+ * Enforces ownership and logs audit trail.
+ */
+export async function softDeleteDocument(
+  documentId: string,
+  userId: string,
+  isAdmin = false
+) {
+  const document = await prisma.document.findUnique({
+    where: { id: documentId },
+  });
+
+  if (!document || document.deletedAt !== null) {
+    return { status: 404, error: "Document not found or has already been deleted." };
+  }
+
+  if (!isAdmin && document.userId !== userId) {
+    return { status: 403, error: "Access denied. You do not own this document." };
+  }
+
+  const updated = await prisma.document.update({
+    where: { id: documentId },
+    data: { deletedAt: new Date() },
+  });
+
+  return { status: 200, data: updated };
 }

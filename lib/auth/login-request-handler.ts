@@ -8,6 +8,7 @@ import {
   buildSessionCookie,
   buildDeviceCookie,
   logAuditEvent,
+  verifyCsrf,
 } from "./index.js";
 
 /**
@@ -22,6 +23,12 @@ export default async function loginRequestStatusHandler(
   res.setHeader("Content-Type", "application/json");
 
   try {
+    if (req.method === "POST" && !verifyCsrf(req)) {
+      res.statusCode = 403;
+      res.end(JSON.stringify({ success: false, error: "Cross-Site Request Forgery (CSRF) verification failed." }));
+      return;
+    }
+
     const urlObj = new URL(req.url || "/api/auth/login-request", "http://localhost");
     let requestId = urlObj.searchParams.get("requestId")?.trim() || "";
     let action = urlObj.searchParams.get("action")?.trim().toUpperCase() || "STATUS";

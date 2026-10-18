@@ -20,6 +20,10 @@
       "destination": "/api/admin/users?userId=:userId"
     },
     {
+      "source": "/api/documents/:documentId",
+      "destination": "/api/documents?documentId=:documentId"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }

@@ -41,7 +41,7 @@ export function getAuthSecret(): string {
  * Generates cookie serialization string with HttpOnly, SameSite, and Secure flags.
  */
 export function buildSessionCookie(token: string, maxAgeSeconds: number = SESSION_MAX_AGE_SECONDS, forceSecure?: boolean): string {
-  const isProd = process.env.NODE_ENV === "production" || forceSecure;
+  const isProd = process.env.NODE_ENV === "production" || process.env.VERCEL === "1" || Boolean(forceSecure);
   const parts = [
     `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}`,
     "Path=/",
@@ -59,7 +59,7 @@ export function buildSessionCookie(token: string, maxAgeSeconds: number = SESSIO
  * Generates cookie serialization string to clear session.
  */
 export function buildClearSessionCookie(forceSecure?: boolean): string {
-  const isProd = process.env.NODE_ENV === "production" || forceSecure;
+  const isProd = process.env.NODE_ENV === "production" || process.env.VERCEL === "1" || Boolean(forceSecure);
   const parts = [
     `${AUTH_COOKIE_NAME}=`,
     "Path=/",
@@ -82,7 +82,7 @@ export function buildDeviceCookie(
   maxAgeSeconds: number = DEVICE_MAX_AGE_SECONDS,
   forceSecure?: boolean
 ): string {
-  const isProd = process.env.NODE_ENV === "production" || forceSecure;
+  const isProd = process.env.NODE_ENV === "production" || process.env.VERCEL === "1" || Boolean(forceSecure);
   const parts = [
     `${DEVICE_COOKIE_NAME}=${encodeURIComponent(deviceToken)}`,
     "Path=/",

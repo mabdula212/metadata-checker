@@ -1,6 +1,12 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import { exportBankStatementToExcel, getExportFile } from "../lib/excel/index.js";
-import { requireDocumentOwner, requireExportOwner, logAuditEvent } from "../lib/auth/index.js";
+import {
+  requireDocumentOwner,
+  requireExportOwner,
+  logAuditEvent,
+  checkRateLimit,
+  sanitizeClientErrorMessage,
+} from "../lib/auth/index.js";
 
 /**
  * API handler for Bank Statement Excel Export Engine.
@@ -71,7 +77,7 @@ export default async function excelExportHandler(
       res.end(
         JSON.stringify({
           success: false,
-          error: rawMsg.slice(0, 200),
+          error: sanitizeClientErrorMessage(err, is404 ? "Export record not found." : "Failed to retrieve export file."),
         })
       );
       return;
@@ -136,6 +142,22 @@ export default async function excelExportHandler(
     // Enforce document ownership (IDOR defense)
     const docCheck = await requireDocumentOwner(req, res, documentId);
     if (!docCheck) return;
+
+    // Rate limiting: 20 export generations per minute per user / IP
+    const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || "unknown";
+    const rateLimitKey = `excel-export:${docCheck.user.id}:${clientIp}`;
+    const rateCheck = checkRateLimit(rateLimitKey, 20, 60 * 1000);
+    if (!rateCheck.allowed) {
+      res.statusCode = 429;
+      res.setHeader("Retry-After", rateCheck.retryAfterSeconds.toString());
+      res.end(
+        JSON.stringify({
+          success: false,
+          error: `Rate limit exceeded. Please wait ${rateCheck.retryAfterSeconds} seconds before generating another export.`,
+        })
+      );
+      return;
+    }
 
     const forceRegenerate = Boolean(parsedBody.forceRegenerate);
 

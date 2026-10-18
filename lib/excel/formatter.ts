@@ -235,8 +235,10 @@ export function sanitizeWorkbookText(text?: string | null): string {
     .replace(/\/var\/[a-zA-Z0-9_/-]+/gi, "[REDACTED_PATH]");
 
   // Formula injection defense (CSV / Excel Formula Injection CWE-1236):
-  // If string starts with =, +, -, @, or tab/return, prepend a single quote (') so Excel treats it strictly as text.
-  if (/^[=+\-@\t\r]/.test(clean)) {
+  // If string (or string after leading whitespace/control chars) starts with =, +, -, @, |, %, tab, or CR/LF,
+  // prepend a single quote (') so spreadsheet applications interpret it strictly as literal text.
+  const trimmed = clean.trimStart();
+  if (/^[=+\-@|%\t\r]/.test(clean) || /^[=+\-@|%\t\r]/.test(trimmed)) {
     clean = `'${clean}`;
   }
 

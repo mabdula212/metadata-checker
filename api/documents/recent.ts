@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import { Role } from "@prisma/client";
 import { getRecentDocuments } from "../../lib/db/documents.js";
-import { requireAuth, logAuditEvent } from "../../lib/auth/index.js";
+import { requireAuth, logAuditEvent, sanitizeClientErrorMessage } from "../../lib/auth/index.js";
 
 /**
  * API handler to fetch recent analyzed documents.
@@ -20,9 +20,13 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   if (!authUser) return;
 
   try {
+    const url = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
+    const rawLimit = parseInt(url.searchParams.get("limit") || "10", 10);
+    const safeLimit = isNaN(rawLimit) ? 10 : Math.min(Math.max(1, rawLimit), 50);
+
     // Regular users can only see their own documents; Admins can see all
     const filterUserId = authUser.role === Role.ADMIN ? undefined : authUser.id;
-    const documents = await getRecentDocuments(10, filterUserId);
+    const documents = await getRecentDocuments(safeLimit, filterUserId);
 
     // Record audit event
     await logAuditEvent({
@@ -40,12 +44,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       })
     );
   } catch (err: unknown) {
-    const rawMessage = err instanceof Error ? err.message : "Failed to retrieve recent documents.";
     res.statusCode = 500;
     res.end(
       JSON.stringify({
         success: false,
-        error: rawMessage.slice(0, 200),
+        error: sanitizeClientErrorMessage(err, "Failed to retrieve recent documents."),
       })
     );
   }

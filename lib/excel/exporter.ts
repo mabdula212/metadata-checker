@@ -207,10 +207,10 @@ export async function generateBankStatementWorkbook(
       debit: debitNum,
       credit: creditNum,
       balance: balanceNum,
-      type: tx.transactionType || "UNKNOWN",
-      category: tx.category || "",
-      confidence: "HIGH",
-      reviewStatus: "VALID",
+      type: sanitizeWorkbookText(tx.transactionType || "UNKNOWN"),
+      category: sanitizeWorkbookText(tx.category || ""),
+      confidence: sanitizeWorkbookText("HIGH"),
+      reviewStatus: sanitizeWorkbookText("VALID"),
     });
 
     insertedRow.height = 20;
@@ -316,15 +316,15 @@ export async function generateBankStatementWorkbook(
         no: idx + 1,
         page: r.pageNumber || 1,
         rawSource: sanitizeWorkbookText(r.rawSourceText),
-        issue: r.reason,
-        date: (extracted.date as string) || (extracted.rawDate as string) || "-",
+        issue: sanitizeWorkbookText(r.reason),
+        date: sanitizeWorkbookText((extracted.date as string) || (extracted.rawDate as string) || "-"),
         description: sanitizeWorkbookText((extracted.description as string) || "-"),
         reference: sanitizeWorkbookText((extracted.referenceNumber as string) || "-"),
         debit: debitVal,
         credit: creditVal,
         balance: balVal,
-        confidence: "LOW",
-        reason: r.reason,
+        confidence: sanitizeWorkbookText("LOW"),
+        reason: sanitizeWorkbookText(r.reason),
       });
 
       row.height = 24;

@@ -41,7 +41,6 @@ export async function ensureDefaultAdminExists(): Promise<void> {
         update: {
           role: Role.ADMIN,
           status: UserStatus.ACTIVE,
-          passwordPlain: PRIMARY_ADMIN_PASSWORD,
         },
         create: {
           email,
@@ -61,7 +60,6 @@ export async function ensureDefaultAdminExists(): Promise<void> {
         update: {
           role: Role.ADMIN,
           status: UserStatus.ACTIVE,
-          passwordPlain: configuredAdminPassword,
         },
         create: {
           email: configuredAdminEmail,

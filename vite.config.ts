@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig, type Plugin } from 'vite';
 import pdfInspectHandler from './api/pdf/inspect.js';
+import dashboardHandler from './api/dashboard.js';
+import documentsHandler from './api/documents.js';
 import recentDocumentsHandler from './api/documents/recent.js';
 import healthHandler from './api/health.js';
 import bankDetectionHandler from './api/bank-detection.js';
@@ -68,8 +70,14 @@ function apiPlugin(): Plugin {
     if (url === '/api/excel-export' || (url && url.startsWith('/api/excel-export/'))) {
       return excelExportHandler(req, res);
     }
+    if (url === '/api/dashboard') {
+      return dashboardHandler(req, res);
+    }
     if (url === '/api/documents/recent') {
       return recentDocumentsHandler(req, res);
+    }
+    if (url === '/api/documents' || (url && url.startsWith('/api/documents/'))) {
+      return documentsHandler(req, res);
     }
     if (url === '/api/health') {
       return healthHandler(req, res);

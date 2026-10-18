@@ -48,6 +48,23 @@ export function verifyCsrf(req: IncomingMessage): boolean {
     } catch {
       return false;
     }
+  } else if (!origin && req.headers.referer && typeof req.headers.referer === "string") {
+    try {
+      const parsedReferer = new URL(req.headers.referer);
+      if (host && parsedReferer.host !== host) {
+        const isLocalReferer = parsedReferer.hostname === "localhost" || parsedReferer.hostname === "127.0.0.1";
+        const isLocalHost = host.startsWith("localhost") || host.startsWith("127.0.0.1");
+        const isStudioPreview =
+          (parsedReferer.hostname.endsWith("google.com") || parsedReferer.hostname === "google.com") &&
+          (host.endsWith(".run.app") || host.endsWith(".vercel.app"));
+
+        if (!((isLocalReferer && isLocalHost) || isStudioPreview)) {
+          return false;
+        }
+      }
+    } catch {
+      return false;
+    }
   } else if (secFetchSite && secFetchSite === "cross-site") {
     return false;
   }

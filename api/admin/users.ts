@@ -341,9 +341,18 @@ export default async function adminUsersHandler(
         await destroyAllUserSessions(targetUserId);
       }
 
-      // If deactivated or suspended to pending, revoke all active sessions immediately
+      // If deactivated or suspended to pending, revoke all active sessions and devices immediately
       if (updateData.status === UserStatus.DEACTIVATED || updateData.status === UserStatus.PENDING) {
         await destroyAllUserSessions(targetUserId);
+        const now = new Date();
+        await prisma.device.updateMany({
+          where: { userId: targetUserId, status: "ACTIVE" },
+          data: { status: "REVOKED", revokedAt: now },
+        });
+        await prisma.loginRequest.updateMany({
+          where: { userId: targetUserId, status: "PENDING" },
+          data: { status: "CANCELLED", reviewedAt: now, reviewedBy: adminUser.id },
+        });
         await logAuditEvent({
           userId: adminUser.id,
           action: updateData.status === UserStatus.DEACTIVATED ? "USER_DISABLED" : "USER_SET_PENDING",
