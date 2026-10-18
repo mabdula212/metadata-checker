@@ -26,7 +26,8 @@
   "include": [
     "src/**/*",
     "lib/**/*",
-    "api/**/*"
+    "api/**/*",
+    "server/**/*"
   ],
   "exclude": [
     "node_modules",

@@ -226,7 +226,7 @@ describe("Authentication & Security Module", () => {
 
   describe("User Registration Handler", () => {
     it("should reject registration with invalid email or weak password", async () => {
-      const registerHandler = (await import("../api/auth/register.js")).default;
+      const registerHandler = (await import("../server/auth/register.js")).default;
 
       // Test weak password
       let statusCode = 0;
@@ -253,8 +253,8 @@ describe("Authentication & Security Module", () => {
     });
 
     it("should set newly registered users to PENDING status requiring admin authorization", async () => {
-      const registerHandler = (await import("../api/auth/register.js")).default;
-      const loginHandler = (await import("../api/auth/login.js")).default;
+      const registerHandler = (await import("../server/auth/register.js")).default;
+      const loginHandler = (await import("../server/auth/login.js")).default;
       const { prisma } = await import("../lib/db/prisma.js");
 
       const testEmail = `pending_user_${Date.now()}@example.com`;
@@ -353,9 +353,9 @@ describe("Authentication & Security Module", () => {
     });
 
     it("should enforce 1 active device per user, create PENDING LoginRequest on new device, and support Admin APPROVE & REJECT", async () => {
-      const loginHandler = (await import("../api/auth/login.js")).default;
-      const loginRequestStatusHandler = (await import("../api/auth/session.js")).default;
-      const adminLoginRequestsHandler = (await import("../api/admin/users.js")).default;
+      const loginHandler = (await import("../server/auth/login.js")).default;
+      const loginRequestStatusHandler = (await import("../server/auth/session.js")).default;
+      const adminLoginRequestsHandler = (await import("../server/admin/users.js")).default;
       const { prisma } = await import("../lib/db/prisma.js");
       const { hashPassword, createSession, validateRequestSession } = await import(
         "../lib/auth/index.js"
@@ -639,7 +639,7 @@ describe("Authentication & Security Module", () => {
 
     it("should allow ADMIN to log in on multiple different devices concurrently without revoking other sessions or requiring approval", async () => {
       const { prisma } = await import("../lib/db/prisma.js");
-      const { default: loginHandler } = await import("../api/auth/login.js");
+      const { default: loginHandler } = await import("../server/auth/login.js");
       const { hashPassword, validateRequestSession } = await import(
         "../lib/auth/index.js"
       );

@@ -4,8 +4,8 @@ import { prisma } from "../lib/db/prisma.js";
 import { createSession } from "../lib/auth/session.js";
 import { AUTH_COOKIE_NAME } from "../lib/auth/config.js";
 import { Role, UserStatus, DocumentStatus, DocumentType } from "@prisma/client";
-import dashboardHandler from "../api/dashboard.js";
-import documentsHandler from "../api/documents.js";
+import dashboardHandler from "../server/dashboard.js";
+import documentsHandler from "../server/documents.js";
 
 // Helper to create mock HTTP requests and responses
 function createMockHttp(options: {

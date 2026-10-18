@@ -22,18 +22,18 @@ import { getAuthSecret } from "../lib/auth/config.js";
 import { verifyPassword } from "../lib/auth/password.js";
 import { requireRole, requireDocumentOwner, requireExportOwner } from "../lib/auth/guards.js";
 
-// Import Vercel API Route Handlers
-import healthHandler from "../api/health.js";
-import sessionHandler from "../api/auth/session.js";
-import loginHandler from "../api/auth/login.js";
-import registerHandler from "../api/auth/register.js";
-import logoutHandler from "../api/auth/logout.js";
-import adminUsersHandler from "../api/admin/users.js";
-import adminResetPasswordHandler from "../api/admin/reset-password.js";
-import bankDetectionHandler from "../api/bank-detection.js";
-import transactionExtractionHandler from "../api/transaction-extraction.js";
-import excelExportHandler from "../api/excel-export.js";
-import pdfInspectHandler from "../api/pdf/inspect.js";
+// Import Server API Route Handlers
+import healthHandler from "../server/health.js";
+import sessionHandler from "../server/auth/session.js";
+import loginHandler from "../server/auth/login.js";
+import registerHandler from "../server/auth/register.js";
+import logoutHandler from "../server/auth/logout.js";
+import adminUsersHandler from "../server/admin/users.js";
+import adminResetPasswordHandler from "../server/admin/reset-password.js";
+import bankDetectionHandler from "../server/bank-detection.js";
+import transactionExtractionHandler from "../server/transaction-extraction.js";
+import excelExportHandler from "../server/excel-export.js";
+import pdfInspectHandler from "../server/pdf/inspect.js";
 
 // Helper to mock Node HTTP request & response
 function createMockHttpReqRes(options: {
@@ -117,16 +117,16 @@ describe("Vercel ESM Module Resolution & API Handlers Audit", () => {
     const authGuardsModule = await import("../lib/auth/guards.js");
     assert.ok(authGuardsModule.requireAuth);
 
-    const registerApiModule = await import("../api/auth/register.js");
+    const registerApiModule = await import("../server/auth/register.js");
     assert.strictEqual(typeof registerApiModule.default, "function");
 
-    const loginApiModule = await import("../api/auth/login.js");
+    const loginApiModule = await import("../server/auth/login.js");
     assert.strictEqual(typeof loginApiModule.default, "function");
 
-    const sessionApiModule = await import("../api/auth/session.js");
+    const sessionApiModule = await import("../server/auth/session.js");
     assert.strictEqual(typeof sessionApiModule.default, "function");
 
-    const logoutApiModule = await import("../api/auth/logout.js");
+    const logoutApiModule = await import("../server/auth/logout.js");
     assert.strictEqual(typeof logoutApiModule.default, "function");
   });
 
@@ -147,7 +147,7 @@ describe("Vercel ESM Module Resolution & API Handlers Audit", () => {
       return results;
     }
 
-    const files = [...getAllFiles("api"), ...getAllFiles("lib")];
+    const files = [...getAllFiles("api"), ...getAllFiles("server"), ...getAllFiles("lib")];
     const importRegex = /(from\s+["\x27]|import\s*\(\s*["\x27])([\.\/][^\x27"\n]+)(["\x27]\s*\)?)/g;
     const violations: { file: string; importPath: string }[] = [];
 
