@@ -69,6 +69,7 @@ import { AboutPage } from "./components/AboutPage";
 import { Logo } from "./components/ui/Logo";
 import { DashboardView } from "./components/dashboard/DashboardView";
 import { DocumentHistoryView } from "./components/documents/DocumentHistoryView";
+import { BatchProcessingView } from "./components/batch/BatchProcessingView";
 
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
 
@@ -210,7 +211,7 @@ const STAGE_DETAILS: Record<ProcessingStage, ProcessingStateInfo> = {
   },
 };
 
-type NavigationTab = "dashboard" | "analyze" | "recent" | "exports" | "about" | "admin";
+type NavigationTab = "dashboard" | "analyze" | "batch" | "recent" | "exports" | "about" | "admin";
 
 interface MainWorkspaceProps {
   user: UserProfile;
@@ -1018,6 +1019,18 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
               </button>
               <button
                 type="button"
+                onClick={() => setActiveTab("batch")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                  activeTab === "batch"
+                    ? "bg-blue-50 text-[#2563EB] font-bold"
+                    : "text-[#64748B] hover:text-[#0F172A] hover:bg-slate-50"
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Batch PDF</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setActiveTab("recent")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                   activeTab === "recent"
@@ -1127,6 +1140,17 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
             <button
               type="button"
               onClick={() => {
+                setActiveTab("batch");
+                setMobileMenuOpen(false);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 flex items-center gap-1.5"
+            >
+              <Layers className="w-3.5 h-3.5 text-blue-600" />
+              <span>Batch PDF Processing</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 setActiveTab("recent");
                 setMobileMenuOpen(false);
               }}
@@ -1189,6 +1213,19 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
             isAuthenticated={true}
             onNavigateHome={() => setActiveTab("dashboard")}
             onNavigateAnalyze={() => setActiveTab("analyze")}
+          />
+        )}
+
+        {/* ============================================================== */}
+        {/* VIEW: BATCH PDF PROCESSING DEDICATED PAGE */}
+        {/* ============================================================== */}
+        {activeTab === "batch" && (
+          <BatchProcessingView
+            onOpenDocument={(docId) => {
+              handleOpenDocument(docId);
+              setActiveTab("analyze");
+            }}
+            onNavigateHistory={() => setActiveTab("recent")}
           />
         )}
 
@@ -1294,6 +1331,7 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
               user={user}
               onNavigateAnalyze={() => setActiveTab("analyze")}
               onNavigateHistory={() => setActiveTab("recent")}
+              onNavigateBatch={() => setActiveTab("batch")}
               onOpenDocument={handleOpenDocument}
             />
 
@@ -1491,13 +1529,24 @@ function MainWorkspace({ user, logout, activeTab, setActiveTab }: MainWorkspaceP
         {activeTab === "analyze" && (
           <div className="space-y-8 animate-in fade-in duration-200">
             {/* Top Workspace Header */}
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#0F172A]">
-                Analyze Your Financial PDF
-              </h1>
-              <p className="text-xs sm:text-sm text-[#64748B] mt-1">
-                Upload a bank statement or financial PDF to begin analysis.
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#0F172A]">
+                  Analyze Your Financial PDF
+                </h1>
+                <p className="text-xs sm:text-sm text-[#64748B] mt-1">
+                  Upload a bank statement or financial PDF to begin analysis.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("batch")}
+                className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 self-start sm:self-auto cursor-pointer shadow-xs"
+              >
+                <Layers className="w-3.5 h-3.5 text-blue-600" />
+                <span>Process Multiple PDFs (Batch) →</span>
+              </button>
             </div>
 
             {/* Workflow Step Tracker */}

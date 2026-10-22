@@ -115,6 +115,7 @@ export interface SaveDocumentOptions {
   buffer: Buffer;
   extractedMetadata: ExtractedPdfMetadata;
   userId?: string;
+  batchId?: string;
 }
 
 export interface SaveDocumentResult {
@@ -203,6 +204,13 @@ export async function processAndSaveDocument(
       }
     }
 
+    if (options.batchId) {
+      await prisma.document.update({
+        where: { id: existing.document.id },
+        data: { batchId: options.batchId },
+      }).catch(() => null);
+    }
+
     return {
       isDuplicate: true,
       document: existing.document,
@@ -239,6 +247,7 @@ export async function processAndSaveDocument(
     data: {
       id: documentId,
       userId: ownerUserId,
+      batchId: options.batchId ?? null,
       originalFileName,
       storedFileName,
       mimeType: "application/pdf",
@@ -253,6 +262,7 @@ export async function processAndSaveDocument(
   const job = await prisma.processingJob.create({
     data: {
       documentId: document.id,
+      batchId: options.batchId ?? null,
       jobType: "METADATA_EXTRACTION",
       status: "PROCESSING",
       startedAt: new Date(),
@@ -430,6 +440,7 @@ export async function runBankDetectionOnDocument(
   const job = await prisma.processingJob.create({
     data: {
       documentId: document.id,
+      batchId: document.batchId ?? null,
       jobType: "BANK_DETECTION",
       status: "PROCESSING",
       startedAt: new Date(),
@@ -682,6 +693,7 @@ export async function runTransactionExtractionOnDocument(
   const job = await prisma.processingJob.create({
     data: {
       documentId: document.id,
+      batchId: document.batchId ?? null,
       jobType: "TRANSACTION_EXTRACTION",
       status: "PROCESSING",
       startedAt: new Date(),

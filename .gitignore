@@ -27,6 +27,10 @@ prisma/*.db-journal
 # Local storage uploads
 /storage/
 tmp_test_exports/
-
-
+# Internal & runtime config
+.dev.env.json
+*.db
+*.db-journal
+*.sqlite
+.aistudio/
 

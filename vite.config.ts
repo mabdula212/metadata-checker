@@ -1,43 +1,27 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import { defineConfig, type Plugin } from 'vite';
-import apiHandler from './api/index.js';
-
-function apiPlugin(): Plugin {
-  const handleApi = (req: any, res: any, next: any) => {
-    const url = req.url?.split('?')[0];
-    if (url && (url === '/api' || url.startsWith('/api/'))) {
-      return apiHandler(req, res);
-    }
-    next();
-  };
-
-  return {
-    name: 'api-serverless-plugin',
-    configureServer(server) {
-      server.middlewares.use(handleApi);
-    },
-    configurePreviewServer(server) {
-      server.middlewares.use(handleApi);
-    },
-  };
-}
+import { defineConfig } from 'vite';
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss(), apiPlugin()],
+    plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),
       },
     },
     server: {
+      port: 3000,
+      strictPort: true,
+      host: '0.0.0.0',
       allowedHosts: true,
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
     preview: {
+      port: 3000,
+      strictPort: true,
       allowedHosts: true,
     },
   };

@@ -64,6 +64,7 @@ interface DashboardViewProps {
   user: UserProfile;
   onNavigateAnalyze: () => void;
   onNavigateHistory: () => void;
+  onNavigateBatch?: () => void;
   onOpenDocument: (documentId: string) => void;
 }
 
@@ -71,6 +72,7 @@ export function DashboardView({
   user,
   onNavigateAnalyze,
   onNavigateHistory,
+  onNavigateBatch,
   onOpenDocument,
 }: DashboardViewProps) {
   const [data, setData] = useState<{
@@ -194,13 +196,23 @@ export function DashboardView({
             <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${loading ? "animate-spin" : ""}`} />
             <span>Refresh</span>
           </button>
+          {onNavigateBatch && (
+            <button
+              type="button"
+              onClick={onNavigateBatch}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+            >
+              <Layers className="w-3.5 h-3.5 text-blue-600" />
+              <span>Batch PDF</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onNavigateAnalyze}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
           >
             <UploadCloud className="w-4 h-4" />
-            <span>Analyze New PDF</span>
+            <span>Analyze PDF</span>
           </button>
         </div>
       </div>

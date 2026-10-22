@@ -17,6 +17,7 @@ import dashboardHandler from "../server/dashboard.js";
 import documentsHandler from "../server/documents.js";
 import recentDocumentsHandler from "../server/documents/recent.js";
 import healthHandler from "../server/health.js";
+import batchesHandler from "../server/batches.js";
 
 /**
  * Unified Serverless Function Router for Vercel Hobby Plan (1 Function instead of 14).
@@ -97,6 +98,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   }
   if (pathname === "/api/health") {
     return healthHandler(req, res);
+  }
+  if (pathname === "/api/batches" || pathname.startsWith("/api/batches/")) {
+    return batchesHandler(req, res);
   }
 
   res.statusCode = 404;
